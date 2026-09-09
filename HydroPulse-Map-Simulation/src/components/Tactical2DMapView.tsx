@@ -8,6 +8,8 @@ interface Tactical2DMapViewProps {
   routeActive: boolean;
   activeRoute: DynamicRouteResult | null;
   onPickLocation?: (type: 'origin' | 'dest', lat: number, lng: number, label: string) => void;
+  pinMode?: 'none' | 'origin' | 'dest';
+  onSetPinMode?: (mode: 'none' | 'origin' | 'dest') => void;
 }
 
 export const Tactical2DMapView = memo(function Tactical2DMapView({
@@ -15,6 +17,8 @@ export const Tactical2DMapView = memo(function Tactical2DMapView({
   routeActive,
   activeRoute,
   onPickLocation,
+  pinMode: externalPinMode,
+  onSetPinMode: externalSetPinMode,
 }: Tactical2DMapViewProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -23,9 +27,19 @@ export const Tactical2DMapView = memo(function Tactical2DMapView({
   
   const [activeLayer, setActiveLayer] = useState<'dark' | 'satellite' | 'street'>('dark');
   const [showHazardPath, setShowHazardPath] = useState<boolean>(true);
-  const [pinMode, setPinMode] = useState<'none' | 'origin' | 'dest'>('none');
+  const [localPinMode, setLocalPinMode] = useState<'none' | 'origin' | 'dest'>('none');
 
-  // Initialize Map
+  const pinMode = externalPinMode !== undefined ? externalPinMode : localPinMode;
+  const setPinMode = externalSetPinMode || setLocalPinMode;
+
+  const pinModeRef = useRef(pinMode);
+  pinModeRef.current = pinMode;
+  const onPickLocationRef = useRef(onPickLocation);
+  onPickLocationRef.current = onPickLocation;
+  const setPinModeRef = useRef(setPinMode);
+  setPinModeRef.current = setPinMode;
+
+  // Initialize Map (runs ONCE on mount)
   useEffect(() => {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
 
@@ -56,13 +70,14 @@ export const Tactical2DMapView = memo(function Tactical2DMapView({
 
     // Map click handler for custom interactive pin placement
     map.on('click', (e: L.LeafletMouseEvent) => {
+      const currentPin = pinModeRef.current;
       const { lat, lng } = e.latlng;
-      if (pinMode === 'origin' && onPickLocation) {
-        onPickLocation('origin', lat, lng, `CUSTOM ORIGIN [${lat.toFixed(4)}, ${lng.toFixed(4)}]`);
-        setPinMode('none');
-      } else if (pinMode === 'dest' && onPickLocation) {
-        onPickLocation('dest', lat, lng, `CUSTOM DEST [${lat.toFixed(4)}, ${lng.toFixed(4)}]`);
-        setPinMode('none');
+      if (currentPin === 'origin' && onPickLocationRef.current) {
+        onPickLocationRef.current('origin', lat, lng, `PINNED ORIGIN [${lat.toFixed(4)}, ${lng.toFixed(4)}]`);
+        setPinModeRef.current('none');
+      } else if (currentPin === 'dest' && onPickLocationRef.current) {
+        onPickLocationRef.current('dest', lat, lng, `PINNED DEST [${lat.toFixed(4)}, ${lng.toFixed(4)}]`);
+        setPinModeRef.current('none');
       }
     });
 
@@ -70,7 +85,7 @@ export const Tactical2DMapView = memo(function Tactical2DMapView({
       map.remove();
       mapInstanceRef.current = null;
     };
-  }, [pinMode, onPickLocation]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Update Tile Layer dynamically (100% Watermark-Free)
   const changeTileLayer = (type: 'dark' | 'satellite' | 'street') => {
@@ -244,7 +259,7 @@ export const Tactical2DMapView = memo(function Tactical2DMapView({
   };
 
   return (
-    <div className="w-full mt-4 font-['Lexend']">
+    <div id="tactical-2d-map" className="w-full mt-4 font-['Lexend']">
       <div className="relative bg-[#090d15]/95 backdrop-blur-2xl rounded-xl border border-cyan-500/25 shadow-[0_8px_32px_rgba(0,0,0,0.7)] overflow-hidden flex flex-col">
         {/* Cyber Corners */}
         <div className="pointer-events-none absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-[#00d9ff] z-20" />
@@ -349,6 +364,21 @@ export const Tactical2DMapView = memo(function Tactical2DMapView({
         {/* Leaflet 2D Map Canvas Container */}
         <div className={`relative w-full h-[370px] sm:h-[420px] bg-[#05070a] ${pinMode !== 'none' ? 'cursor-crosshair' : ''}`}>
           <div ref={mapContainerRef} className="w-full h-full z-0" />
+
+          {/* Active Pin Mode Notification Banner */}
+          {pinMode !== 'none' && (
+            <div className="absolute top-3 right-3 z-[450] bg-blue-950/90 border border-blue-400/60 shadow-[0_4px_20px_rgba(0,0,0,0.8)] px-3 py-1.5 rounded-lg flex items-center gap-2 font-mono text-xs text-blue-200 animate-pulse">
+              <span className="material-symbols-outlined text-blue-400 text-sm">my_location</span>
+              <span>Click anywhere on the map to set <strong>{pinMode === 'origin' ? 'ORIGIN [A]' : 'DESTINATION [B]'}</strong></span>
+              <button
+                type="button"
+                onClick={() => setPinMode('none')}
+                className="ml-2 px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[10px] transition-colors cursor-pointer"
+              >
+                CANCEL
+              </button>
+            </div>
+          )}
 
           {/* Floating Road Telemetry Badge (Top Left) */}
           {activeRoute && (

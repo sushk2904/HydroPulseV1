@@ -1,6 +1,6 @@
 import React, { useState, memo } from 'react';
-import { MUMBAI_LOCATIONS, MumbaiLocation } from '../services/mumbaiLocations';
-import { DynamicRouteResult } from '../services/routingService';
+import { MUMBAI_LOCATIONS, MUMBAI_FLOOD_HOTSPOTS, MumbaiLocation } from '../services/mumbaiLocations';
+import { DynamicRouteResult, AlgorithmLogEntry } from '../services/routingService';
 import { SectorWeatherData } from '../services/weatherService';
 
 interface RoutingControlPanelProps {
@@ -9,11 +9,35 @@ interface RoutingControlPanelProps {
   activeRoute: DynamicRouteResult | null;
   originLoc: MumbaiLocation;
   destLoc: MumbaiLocation;
+  stormIntensity: number;
+  flashFloodedNodes: string[];
+  algorithmLog: AlgorithmLogEntry[];
+  lastRecalcMs: number;
+  modelUsed: boolean;
   onSelectOrigin: (loc: MumbaiLocation) => void;
   onSelectDest: (loc: MumbaiLocation) => void;
   onCalculateRoute: () => void;
+  onIntensityChange: (value: number, immediate?: boolean) => void;
+  onFlashFlood: (nodeId: string) => void;
+  onRandomFlashFlood: () => void;
+  onClearFlashFloods: () => void;
   onTogglePinMode?: (type: 'origin' | 'dest') => void;
+  pinMode?: 'none' | 'origin' | 'dest';
 }
+
+const INTENSITY_PRESETS = [
+  { label: '10 mm/hr', value: 10, desc: 'Light' },
+  { label: '50 mm/hr', value: 50, desc: 'Moderate' },
+  { label: '100 mm/hr', value: 100, desc: 'Heavy' },
+  { label: '150+ mm/hr', value: 155, desc: '2005 Level' },
+];
+
+const ROUTE_PRESETS = [
+  { origId: 'bandra-west', destId: 'seepz-andheri', label: 'Bandra → SEEPZ' },
+  { origId: 'colaba-nariman', destId: 'bkc-financial', label: 'South Coast → BKC' },
+  { origId: 'dadar-tt', destId: 'powai-iit', label: 'Dadar → Powai' },
+  { origId: 'airport-t2', destId: 'borivali-west', label: 'Airport → Borivali' },
+];
 
 export const RoutingControlPanel = memo(function RoutingControlPanel({
   weatherData,
@@ -21,12 +45,23 @@ export const RoutingControlPanel = memo(function RoutingControlPanel({
   activeRoute,
   originLoc,
   destLoc,
+  stormIntensity,
+  flashFloodedNodes,
+  algorithmLog,
+  lastRecalcMs,
+  modelUsed,
   onSelectOrigin,
   onSelectDest,
   onCalculateRoute,
+  onIntensityChange,
+  onFlashFlood,
+  onRandomFlashFlood,
+  onClearFlashFloods,
   onTogglePinMode,
+  pinMode = 'none',
 }: RoutingControlPanelProps) {
   const [isCalculating, setIsCalculating] = useState(false);
+  const [showAlgoLog, setShowAlgoLog] = useState(true);
 
   const handleCalculateClick = async () => {
     setIsCalculating(true);
@@ -44,273 +79,403 @@ export const RoutingControlPanel = memo(function RoutingControlPanel({
     if (dest) onSelectDest(dest);
   };
 
+  // Surge level color
+  const getSurgeColor = (level: string) => {
+    switch (level) {
+      case 'HEAVY SURGE': return 'text-red-400 bg-red-950/40';
+      case 'HIGH ALERT': return 'text-amber-300 bg-amber-950/40';
+      case 'MODERATE MONSOON': return 'text-blue-300 bg-blue-950/40';
+      default: return 'text-slate-300 bg-slate-800/40';
+    }
+  };
+
+  const logStatusIcon = (status: AlgorithmLogEntry['status']) => {
+    switch (status) {
+      case 'success': return '✓';
+      case 'warn': return '⚠';
+      case 'error': return '✗';
+      case 'info': return '●';
+    }
+  };
+
+  const logStatusColor = (status: AlgorithmLogEntry['status']) => {
+    switch (status) {
+      case 'success': return 'text-emerald-400';
+      case 'warn': return 'text-amber-400';
+      case 'error': return 'text-red-400';
+      case 'info': return 'text-slate-400';
+    }
+  };
+
   return (
-    <div className="h-full min-h-[470px] sm:min-h-[490px] flex flex-col font-['Lexend']">
-      {/* ROUTING PARAMETERS (Glassmorphism HUD Card - Full Space) */}
-      <div className="relative flex-1 bg-[#090d15]/92 backdrop-blur-2xl rounded-xl border border-cyan-500/25 p-3.5 sm:p-4 shadow-[0_8px_32px_rgba(0,0,0,0.6)] overflow-hidden flex flex-col justify-between">
-        {/* Futuristic Cyber Corner Accents */}
-        <div className="pointer-events-none absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-[#00d9ff] z-10" />
-        <div className="pointer-events-none absolute top-0 right-0 w-3 h-3 border-t-2 border-r-2 border-[#00d9ff] z-10" />
-        <div className="pointer-events-none absolute bottom-0 left-0 w-3 h-3 border-b-2 border-l-2 border-[#00d9ff] z-10" />
-        <div className="pointer-events-none absolute bottom-0 right-0 w-3 h-3 border-b-2 border-r-2 border-[#00d9ff] z-10" />
+    <div className="h-full flex flex-col">
+      <div className="flex-1 bg-[#0d1117] rounded-xl border border-slate-800/60 p-4 flex flex-col gap-3 overflow-y-auto max-h-[calc(100vh-8rem)] scrollbar-none">
 
-        {/* Top Section */}
-        <div>
-          {/* Panel Header */}
-          <div className="flex items-center justify-between border-b border-[#3c494d]/35 pb-2.5 mb-2.5">
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-[#00d9ff] text-[18px]">tune</span>
-              <h2 className="text-xs tracking-[0.16em] uppercase font-bold text-slate-100 font-['Space_Grotesk']">
-                Multi-Route Tactical Engine
-              </h2>
-            </div>
-          </div>
-
-          {/* Quick Preset Route Selectors */}
-          <div className="mb-2.5 flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none font-mono text-[9px]">
-            <span className="text-slate-400 text-[8px] uppercase tracking-wider shrink-0">PRESETS:</span>
-            <button
-              type="button"
-              onClick={() => handlePresetSelect('bandra-west', 'seepz-andheri')}
-              className={`px-2 py-0.5 rounded border transition-colors cursor-pointer shrink-0 ${
-                originLoc.id === 'bandra-west' && destLoc.id === 'seepz-andheri'
-                  ? 'bg-cyan-500 text-slate-950 font-bold border-cyan-400'
-                  : 'bg-[#141b27] text-slate-300 hover:text-cyan-300 border-slate-700/60'
-              }`}
-            >
-              Bandra ➔ SEEPZ
-            </button>
-            <button
-              type="button"
-              onClick={() => handlePresetSelect('colaba-nariman', 'bkc-financial')}
-              className={`px-2 py-0.5 rounded border transition-colors cursor-pointer shrink-0 ${
-                originLoc.id === 'colaba-nariman' && destLoc.id === 'bkc-financial'
-                  ? 'bg-cyan-500 text-slate-950 font-bold border-cyan-400'
-                  : 'bg-[#141b27] text-slate-300 hover:text-cyan-300 border-slate-700/60'
-              }`}
-            >
-              South Coast ➔ BKC
-            </button>
-            <button
-              type="button"
-              onClick={() => handlePresetSelect('dadar-tt', 'powai-iit')}
-              className={`px-2 py-0.5 rounded border transition-colors cursor-pointer shrink-0 ${
-                originLoc.id === 'dadar-tt' && destLoc.id === 'powai-iit'
-                  ? 'bg-cyan-500 text-slate-950 font-bold border-cyan-400'
-                  : 'bg-[#141b27] text-slate-300 hover:text-cyan-300 border-slate-700/60'
-              }`}
-            >
-              Dadar ➔ Powai
-            </button>
-            <button
-              type="button"
-              onClick={() => handlePresetSelect('airport-t2', 'borivali-west')}
-              className={`px-2 py-0.5 rounded border transition-colors cursor-pointer shrink-0 ${
-                originLoc.id === 'airport-t2' && destLoc.id === 'borivali-west'
-                  ? 'bg-cyan-500 text-slate-950 font-bold border-cyan-400'
-                  : 'bg-[#141b27] text-slate-300 hover:text-cyan-300 border-slate-700/60'
-              }`}
-            >
-              Airport ➔ Borivali
-            </button>
-          </div>
-
-          {/* Parameter Fields */}
-          <div className="space-y-2.5">
-            {/* Field 1: Start Location Selector */}
-            <div className="space-y-1">
-              <div className="flex justify-between text-[9px] uppercase tracking-wider text-slate-400 font-mono">
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_6px_#00d9ff]" />
-                  ORIGIN [START SECTOR]
-                </span>
-                <span className="text-cyan-400 font-semibold">{originLoc.elevationM}m AMSL</span>
-              </div>
-              <div className="relative flex items-center">
-                <span className="material-symbols-outlined absolute left-2.5 text-cyan-400 text-[16px] pointer-events-none">
-                  trip_origin
-                </span>
-                <select
-                  value={originLoc.id}
-                  onChange={(e) => {
-                    const found = MUMBAI_LOCATIONS.find((l) => l.id === e.target.value);
-                    if (found) onSelectOrigin(found);
-                  }}
-                  className="w-full bg-[#111722]/90 border border-[#3c494d]/60 focus:border-[#00d9ff] focus:ring-1 focus:ring-[#00d9ff]/30 focus:outline-none rounded-lg px-2.5 py-1.5 pl-8 pr-12 text-[11px] text-slate-100 transition-all font-mono appearance-none cursor-pointer"
-                >
-                  {MUMBAI_LOCATIONS.map((loc) => (
-                    <option key={loc.id} value={loc.id} className="bg-[#0f141d] text-slate-200">
-                      {loc.name}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => onTogglePinMode && onTogglePinMode('origin')}
-                  className="absolute right-1.5 px-2 py-0.5 bg-[#1e2736] hover:bg-cyan-900/60 rounded text-[9px] text-cyan-300 transition-colors border border-cyan-500/25 font-mono cursor-pointer"
-                  title="Click on map to pin custom origin"
-                >
-                  MAP PIN
-                </button>
-              </div>
-            </div>
-
-            {/* Field 2: Destination Selector */}
-            <div className="space-y-1">
-              <div className="flex justify-between text-[9px] uppercase tracking-wider text-slate-400 font-mono">
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-[#00FF66] shadow-[0_0_6px_#00FF66]" />
-                  TARGET [DESTINATION SECTOR]
-                </span>
-                <span className="text-[#00FF66] font-semibold">{destLoc.elevationM}m AMSL</span>
-              </div>
-              <div className="relative flex items-center">
-                <span className="material-symbols-outlined absolute left-2.5 text-[#00FF66] text-[16px] pointer-events-none">
-                  location_on
-                </span>
-                <select
-                  value={destLoc.id}
-                  onChange={(e) => {
-                    const found = MUMBAI_LOCATIONS.find((l) => l.id === e.target.value);
-                    if (found) onSelectDest(found);
-                  }}
-                  className="w-full bg-[#111722]/90 border border-[#3c494d]/60 focus:border-[#00FF66] focus:ring-1 focus:ring-[#00FF66]/30 focus:outline-none rounded-lg px-2.5 py-1.5 pl-8 pr-12 text-[11px] text-slate-100 transition-all font-mono appearance-none cursor-pointer"
-                >
-                  {MUMBAI_LOCATIONS.map((loc) => (
-                    <option key={loc.id} value={loc.id} className="bg-[#0f141d] text-slate-200">
-                      {loc.name}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => onTogglePinMode && onTogglePinMode('dest')}
-                  className="absolute right-1.5 px-2 py-0.5 bg-[#1e2736] hover:bg-emerald-900/60 rounded text-[9px] text-[#00FF66] transition-colors border border-[#00FF66]/25 font-mono cursor-pointer"
-                  title="Click on map to pin custom destination"
-                >
-                  MAP PIN
-                </button>
-              </div>
-            </div>
-
-            {/* Real-time Sector Rainfall & Meteorological Intelligence Card (Calculated automatically per location) */}
-            {weatherData && (
-              <div className="p-2.5 bg-[#101724]/95 rounded-lg border border-cyan-500/35 font-mono text-[9px] space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-300 flex items-center gap-1.5 font-bold uppercase tracking-wider">
-                    <span className="material-symbols-outlined text-amber-400 text-[15px] animate-pulse">
-                      thunderstorm
-                    </span>
-                    SECTOR REAL-TIME PRECIPITATION FEED
-                  </span>
-                  <span
-                    className={`font-bold px-2 py-0.5 rounded border text-[9px] ${
-                      weatherData.surgeLevel === 'HEAVY SURGE'
-                        ? 'text-red-300 bg-red-950/70 border-red-500/50'
-                        : weatherData.surgeLevel === 'HIGH ALERT'
-                        ? 'text-amber-300 bg-amber-950/70 border-amber-500/50'
-                        : 'text-cyan-300 bg-cyan-950/70 border-cyan-500/50'
-                    }`}
-                  >
-                    {weatherData.rainIntensityMmHr} MM/HR [{weatherData.surgeLevel}]
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-slate-300 text-[8.5px] border-t border-slate-700/40 pt-1.5">
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">DOPPLER RADAR:</span>
-                    <span className="text-cyan-300 font-semibold">{weatherData.dopplerRadarDbz} dBZ</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">BAROMETER:</span>
-                    <span className="text-slate-200 font-semibold">{weatherData.barometricPressureHpa} hPa</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">HUMIDITY:</span>
-                    <span className="text-cyan-300 font-semibold">{weatherData.relativeHumidityPct}% RH</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">WIND VECTOR:</span>
-                    <span className="text-amber-300 font-semibold">{weatherData.windSpeedKmh} km/h {weatherData.windDirection}</span>
-                  </div>
-                </div>
-
-                <div className="text-[8px] text-cyan-400/80 tracking-tight pt-0.5 truncate flex items-center gap-1">
-                  <span className="w-1 h-1 rounded-full bg-[#00FF66] animate-ping" />
-                  <span>AUTONOMOUS LOCAL METEOROLOGY // LIVE SECTOR RADAR SYNCED</span>
-                </div>
-              </div>
-            )}
-
-            {/* Live Model Corridor Telemetry Grid */}
-            {activeRoute && (
-              <div className="mt-1.5 p-2 bg-[#121824]/90 rounded-lg border border-[#3c494d]/40 font-mono text-[9px]">
-                <div className="flex items-center justify-between text-slate-400 border-b border-slate-700/40 pb-1 mb-1">
-                  <span className="flex items-center gap-1 text-cyan-300 font-bold">
-                    <span className="material-symbols-outlined text-[13px]">alt_route</span>
-                    ST-GNN COMPUTED SAFE VECTOR
-                  </span>
-                  <span className="text-[#00FF66] font-semibold">
-                    PASSABILITY: {activeRoute.safeRoute.passability}
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-slate-300 text-[8.5px]">
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">DISTANCE:</span>
-                    <span className="text-cyan-300 font-semibold">{activeRoute.safeRoute.distanceKm} km</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">EST. TIME:</span>
-                    <span className="text-[#00FF66] font-semibold">{activeRoute.safeRoute.durationMin} min</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">ELEVATION GAIN:</span>
-                    <span className="text-amber-300 font-semibold">+{activeRoute.safeRoute.elevationGainM}m AMSL</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">HAZARDS BYPASS:</span>
-                    <span className="text-[#00FF66] font-semibold">{activeRoute.safeRoute.hazardsBypassedCount} Nodes</span>
-                  </div>
-                </div>
-              </div>
-            )}
+        {/* ──────── PANEL HEADER ──────── */}
+        <div className="flex items-center justify-between border-b border-slate-800/60 pb-2.5">
+          <h2 className="text-sm font-semibold text-slate-100 font-['Space_Grotesk']">
+            Route Configuration
+          </h2>
+          <div className="flex items-center gap-1.5 text-[10px] font-mono">
+            <span className={`w-1.5 h-1.5 rounded-full ${modelUsed ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+            <span className={modelUsed ? 'text-emerald-400' : 'text-amber-400'}>
+              {modelUsed ? 'ST-GNN Active' : 'OSRM Fallback'}
+            </span>
           </div>
         </div>
 
-        {/* Bottom Actions & Status */}
-        <div className="mt-2.5 pt-2 border-t border-[#3c494d]/35">
-          {/* Primary Action CTA Button */}
-          <button
-            onClick={handleCalculateClick}
-            disabled={isCalculating}
-            type="button"
-            className="w-full py-2.5 px-4 bg-gradient-to-r from-[#00d9ff] to-[#00FF66] hover:from-[#5ce5ff] hover:to-[#42ff8b] text-[#05070A] font-bold text-xs uppercase tracking-[0.14em] rounded-lg flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(0,217,255,0.45)] hover:shadow-[0_0_28px_rgba(0,255,102,0.6)] transition-all transform active:scale-[0.98] disabled:opacity-80 cursor-pointer font-mono"
-          >
-            {isCalculating ? (
-              <>
-                <span>CALCULATING ST-GNN SAFE VECTOR...</span>
-                <span className="material-symbols-outlined text-[16px] animate-spin">refresh</span>
-              </>
-            ) : (
-              <>
-                <span className="material-symbols-outlined text-[16px]">navigation</span>
-                <span>{routeActive ? 'RE-CALCULATE ROUTE' : 'CALCULATE SAFE VECTOR'}</span>
-                <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
-              </>
-            )}
-          </button>
+        {/* ──────── ROUTE PRESETS ──────── */}
+        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+          <span className="text-[10px] text-slate-500 font-medium shrink-0">Presets:</span>
+          {ROUTE_PRESETS.map((p) => {
+            const isActive = originLoc.id === p.origId && destLoc.id === p.destId;
+            return (
+              <button
+                key={p.origId}
+                type="button"
+                onClick={() => handlePresetSelect(p.origId, p.destId)}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer shrink-0 ${
+                  isActive
+                    ? 'bg-slate-700 text-white'
+                    : 'bg-slate-800/50 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                }`}
+              >
+                {p.label}
+              </button>
+            );
+          })}
+        </div>
 
-          {/* Integrated Bottom Model Telemetry Badge */}
-          <div className="mt-2 flex items-center justify-between text-[9px] text-slate-400 font-mono">
-            <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#00d9ff] animate-pulse" />
-              <span>MODEL: <span className="text-cyan-300 font-semibold">ST-GAT-GRU (27.6k)</span></span>
+        {/* ──────── ORIGIN / DESTINATION ──────── */}
+        <div className="space-y-2.5">
+          {/* Origin */}
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-[11px] text-slate-400">
+              <span className="flex items-center gap-1.5 font-medium">
+                <span className="w-2 h-2 rounded-full bg-blue-400" />
+                Origin
+              </span>
+              <span className="font-mono text-slate-500 text-[10px]">{originLoc.elevationM}m AMSL</span>
             </div>
-            <div className="flex items-center gap-2.5">
-              <span>ROUTING: <span className="text-slate-200 font-bold">OSRM REAL ROAD</span></span>
-              <span>STATUS: <span className="text-[#00FF66] font-bold">NOMINAL</span></span>
+            <div className="relative flex items-center">
+              <span className="material-symbols-outlined absolute left-2.5 text-slate-500 text-[16px] pointer-events-none">
+                trip_origin
+              </span>
+              <select
+                value={originLoc.id}
+                onChange={(e) => {
+                  const found = MUMBAI_LOCATIONS.find((l) => l.id === e.target.value);
+                  if (found) onSelectOrigin(found);
+                }}
+                className="w-full bg-slate-800/60 border border-slate-700/60 focus:border-blue-500 focus:outline-none rounded-lg px-2.5 py-2 pl-8 pr-20 text-xs text-slate-100 transition-colors appearance-none cursor-pointer"
+              >
+                {MUMBAI_LOCATIONS.map((loc) => (
+                  <option key={loc.id} value={loc.id} className="bg-[#0d1117] text-slate-200">
+                    {loc.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => onTogglePinMode && onTogglePinMode('origin')}
+                className={`absolute right-1.5 px-2 py-1 rounded text-[10px] transition-colors font-medium cursor-pointer ${
+                  pinMode === 'origin'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-slate-700/60 hover:bg-slate-600/60 text-slate-300'
+                }`}
+                title="Click on map to pin custom origin"
+              >
+                {pinMode === 'origin' ? 'Click Map…' : 'Pin on Map'}
+              </button>
             </div>
           </div>
+
+          {/* Destination */}
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-[11px] text-slate-400">
+              <span className="flex items-center gap-1.5 font-medium">
+                <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                Destination
+              </span>
+              <span className="font-mono text-slate-500 text-[10px]">{destLoc.elevationM}m AMSL</span>
+            </div>
+            <div className="relative flex items-center">
+              <span className="material-symbols-outlined absolute left-2.5 text-slate-500 text-[16px] pointer-events-none">
+                location_on
+              </span>
+              <select
+                value={destLoc.id}
+                onChange={(e) => {
+                  const found = MUMBAI_LOCATIONS.find((l) => l.id === e.target.value);
+                  if (found) onSelectDest(found);
+                }}
+                className="w-full bg-slate-800/60 border border-slate-700/60 focus:border-emerald-500 focus:outline-none rounded-lg px-2.5 py-2 pl-8 pr-20 text-xs text-slate-100 transition-colors appearance-none cursor-pointer"
+              >
+                {MUMBAI_LOCATIONS.map((loc) => (
+                  <option key={loc.id} value={loc.id} className="bg-[#0d1117] text-slate-200">
+                    {loc.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => onTogglePinMode && onTogglePinMode('dest')}
+                className={`absolute right-1.5 px-2 py-1 rounded text-[10px] transition-colors font-medium cursor-pointer ${
+                  pinMode === 'dest'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-slate-700/60 hover:bg-slate-600/60 text-slate-300'
+                }`}
+                title="Click on map to pin custom destination"
+              >
+                {pinMode === 'dest' ? 'Click Map…' : 'Pin on Map'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ──────── DYNAMIC WEATHER CONTROLS ──────── */}
+        <div className="p-3 bg-slate-800/30 rounded-lg border border-slate-700/40 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-slate-200 flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-[15px] text-slate-400">cloud</span>
+              Rainfall Intensity
+            </span>
+            <span className={`font-semibold px-2 py-0.5 rounded-md text-[10px] ${weatherData ? getSurgeColor(weatherData.surgeLevel) : 'text-slate-400'}`}>
+              {stormIntensity} mm/hr{weatherData ? ` — ${weatherData.surgeLevel}` : ''}
+            </span>
+          </div>
+
+          {/* Slider */}
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] text-slate-500 font-mono w-4 shrink-0">0</span>
+            <input
+              type="range"
+              min={0}
+              max={200}
+              step={1}
+              value={stormIntensity}
+              onChange={(e) => onIntensityChange(Number(e.target.value))}
+              className="flex-1 h-1.5 rounded-full appearance-none bg-slate-700 cursor-pointer accent-blue-500
+                [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:cursor-pointer
+                [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:cursor-pointer"
+            />
+            <span className="text-[10px] text-slate-500 font-mono w-8 shrink-0 text-right">200</span>
+          </div>
+
+          {/* Quick Presets */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {INTENSITY_PRESETS.map((preset) => (
+              <button
+                key={preset.value}
+                type="button"
+                onClick={() => onIntensityChange(preset.value, true)}
+                className={`px-2 py-1 rounded-md text-[10px] font-medium transition-colors cursor-pointer ${
+                  stormIntensity === preset.value
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-slate-800/60 text-slate-400 hover:text-slate-200 hover:bg-slate-700/60'
+                }`}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Weather Metrics Grid */}
+          {weatherData && (
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px] border-t border-slate-700/30 pt-2">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Radar</span>
+                <span className="text-slate-300 font-medium">{weatherData.dopplerRadarDbz} dBZ</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Pressure</span>
+                <span className="text-slate-300 font-medium">{weatherData.barometricPressureHpa} hPa</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Humidity</span>
+                <span className="text-slate-300 font-medium">{weatherData.relativeHumidityPct}%</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Wind</span>
+                <span className="text-slate-300 font-medium">{weatherData.windSpeedKmh} km/h {weatherData.windDirection}</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ──────── FLASH FLOOD INJECTION ──────── */}
+        <div className="p-3 bg-slate-800/30 rounded-lg border border-slate-700/40 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-slate-200 flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-[15px] text-red-400">flash_on</span>
+              Flash Flood Simulation
+            </span>
+            <div className="flex items-center gap-1.5">
+              {flashFloodedNodes.length > 0 && (
+                <button
+                  type="button"
+                  onClick={onClearFlashFloods}
+                  className="px-2 py-0.5 rounded text-[10px] text-slate-400 hover:text-slate-200 bg-slate-800/60 hover:bg-slate-700/60 transition-colors cursor-pointer"
+                >
+                  Clear All
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onRandomFlashFlood}
+                className="px-2 py-1 rounded-md text-[10px] font-medium bg-red-950/40 text-red-300 hover:bg-red-900/40 border border-red-800/30 transition-colors cursor-pointer"
+              >
+                ⚡ Random Hazard
+              </button>
+            </div>
+          </div>
+
+          {/* Hotspot List */}
+          <div className="space-y-1">
+            {MUMBAI_FLOOD_HOTSPOTS.map((hotspot) => {
+              const isFlooded = flashFloodedNodes.includes(hotspot.id);
+              const zoneState = activeRoute?.activeFloodZones.find((z) => z.id === hotspot.id);
+              return (
+                <div
+                  key={hotspot.id}
+                  className={`flex items-center justify-between px-2.5 py-1.5 rounded-md text-[11px] transition-colors ${
+                    isFlooded
+                      ? 'bg-red-950/30 border border-red-800/40'
+                      : 'bg-slate-800/30 border border-transparent hover:bg-slate-800/50'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span
+                      className={`w-2 h-2 rounded-full shrink-0 ${
+                        isFlooded
+                          ? 'bg-red-400'
+                          : zoneState?.status === 'IMPASSABLE'
+                          ? 'bg-red-400'
+                          : zoneState?.status === 'CRITICAL'
+                          ? 'bg-amber-400'
+                          : zoneState?.status === 'ELEVATED'
+                          ? 'bg-yellow-400'
+                          : 'bg-emerald-400'
+                      }`}
+                    />
+                    <span className="text-slate-300 truncate">{hotspot.name}</span>
+                    {isFlooded && (
+                      <span className="text-[9px] text-red-400 font-mono font-medium shrink-0">4.8m ∞</span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onFlashFlood(hotspot.id)}
+                    className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer shrink-0 ml-2 ${
+                      isFlooded
+                        ? 'bg-slate-700/60 text-slate-300 hover:bg-slate-600/60'
+                        : 'bg-red-950/40 text-red-300 hover:bg-red-900/40'
+                    }`}
+                  >
+                    {isFlooded ? 'Remove' : 'Flood'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ──────── ROUTE RESULTS ──────── */}
+        {activeRoute && (
+          <div className="p-3 bg-slate-800/30 rounded-lg border border-slate-700/40 text-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1.5 text-slate-200 font-medium">
+                <span className="material-symbols-outlined text-[14px] text-slate-400">alt_route</span>
+                Computed Route
+              </span>
+              <span className="text-emerald-400 font-medium text-[11px]">
+                {activeRoute.safeRoute.passability}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px] border-t border-slate-700/30 pt-2">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Distance</span>
+                <span className="text-slate-300 font-medium">{activeRoute.safeRoute.distanceKm} km</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Est. Time</span>
+                <span className="text-slate-300 font-medium">{activeRoute.safeRoute.durationMin} min</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Elevation</span>
+                <span className="text-slate-300 font-medium">+{activeRoute.safeRoute.elevationGainM}m</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Hazards Bypassed</span>
+                <span className="text-slate-300 font-medium">{activeRoute.safeRoute.hazardsBypassedCount}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ──────── CALCULATE BUTTON ──────── */}
+        <button
+          onClick={handleCalculateClick}
+          disabled={isCalculating}
+          type="button"
+          className="w-full py-2.5 px-4 bg-white hover:bg-slate-100 text-slate-900 font-semibold text-xs tracking-wide rounded-lg flex items-center justify-center gap-2 transition-colors active:scale-[0.98] disabled:opacity-60 cursor-pointer"
+        >
+          {isCalculating ? (
+            <>
+              <span className="material-symbols-outlined text-[16px] animate-spin">refresh</span>
+              <span>Computing route…</span>
+            </>
+          ) : (
+            <>
+              <span className="material-symbols-outlined text-[16px]">navigation</span>
+              <span>{routeActive ? 'Recalculate Route' : 'Calculate Safe Route'}</span>
+            </>
+          )}
+        </button>
+
+        {/* ──────── ALGORITHM LOG ──────── */}
+        <div className="p-3 bg-slate-900/60 rounded-lg border border-slate-800/60 space-y-2">
+          <button
+            type="button"
+            onClick={() => setShowAlgoLog(!showAlgoLog)}
+            className="w-full flex items-center justify-between text-[11px] text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
+          >
+            <span className="flex items-center gap-1.5 font-medium">
+              <span className="material-symbols-outlined text-[14px]">terminal</span>
+              Algorithm Log
+            </span>
+            <div className="flex items-center gap-2">
+              {lastRecalcMs > 0 && (
+                <span className="font-mono text-[10px] text-slate-500">{lastRecalcMs}ms</span>
+              )}
+              <span className="material-symbols-outlined text-[14px]">
+                {showAlgoLog ? 'expand_less' : 'expand_more'}
+              </span>
+            </div>
+          </button>
+
+          {showAlgoLog && algorithmLog.length > 0 && (
+            <div className="space-y-1 font-mono text-[10px]">
+              {algorithmLog.map((entry, i) => (
+                <div key={i} className="flex items-start gap-2">
+                  <span className={`shrink-0 ${logStatusColor(entry.status)}`}>
+                    {logStatusIcon(entry.status)}
+                  </span>
+                  <span className="text-slate-500 shrink-0">{entry.label}:</span>
+                  <span className={`${logStatusColor(entry.status)} break-all`}>{entry.value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ──────── BOTTOM STATUS ──────── */}
+        <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1">
+          <div className="flex items-center gap-1.5">
+            <span className={`w-1.5 h-1.5 rounded-full ${modelUsed ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+            <span>{modelUsed ? 'ST-GNN Model Active' : 'ST-GNN Offline → OSRM Fallback'}</span>
+          </div>
+          <span>OSRM Road Routing</span>
         </div>
       </div>
     </div>

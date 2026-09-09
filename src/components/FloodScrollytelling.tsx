@@ -10,7 +10,11 @@ gsap.registerPlugin(ScrollTrigger);
 
 const TOTAL_FRAMES = 301;
 
-export const FloodScrollytelling: React.FC = () => {
+interface FloodScrollytellingProps {
+  onLaunchSimulation?: () => void;
+}
+
+export const FloodScrollytelling: React.FC<FloodScrollytellingProps> = ({ onLaunchSimulation }) => {
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
   const [scrollProgress, setScrollProgress] = useState(0);
   const [loadProgress, setLoadProgress] = useState(0);
@@ -296,7 +300,7 @@ export const FloodScrollytelling: React.FC = () => {
         </div>
       </div>
 
-      <BreakoutDashboard />
+      <BreakoutDashboard onLaunchSimulation={onLaunchSimulation} />
     </div>
   );
 };

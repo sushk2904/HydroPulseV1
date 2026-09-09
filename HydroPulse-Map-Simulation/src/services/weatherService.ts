@@ -88,3 +88,56 @@ export function getRealtimeSectorWeather(
     lastUpdated: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
   };
 }
+
+/**
+ * Computes all weather display metrics from a single user-set rainfall intensity.
+ * Used when the user adjusts the dynamic rainfall slider.
+ */
+export function computeWeatherFromIntensity(
+  intensityMmHr: number,
+  locationId: string,
+  locationName: string,
+  lat: number,
+  lng: number
+): SectorWeatherData {
+  const rain = +Math.max(0, Math.min(200, intensityMmHr)).toFixed(1);
+
+  let surgeLevel: SectorWeatherData['surgeLevel'] = 'MODERATE MONSOON';
+  let conditionLabel = 'Moderate Precipitation';
+  if (rain > 105) {
+    surgeLevel = 'HEAVY SURGE';
+    conditionLabel = 'Torrential Downpour';
+  } else if (rain >= 70) {
+    surgeLevel = 'HIGH ALERT';
+    conditionLabel = 'Heavy Monsoon Band';
+  } else if (rain >= 40) {
+    surgeLevel = 'MODERATE MONSOON';
+    conditionLabel = 'Steady Monsoon';
+  } else {
+    surgeLevel = 'LOW RAIN';
+    conditionLabel = 'Light Shower';
+  }
+
+  const dbz = +(42 + (rain / 150) * 22).toFixed(1);
+  const pressure = +(1008.5 - (rain / 150) * 12.0).toFixed(1);
+  const humidity = Math.min(99, Math.round(88 + (rain / 150) * 11));
+  const wind = Math.round(28 + (rain / 150) * 24);
+
+  return {
+    locationId,
+    locationName,
+    lat,
+    lng,
+    rainIntensityMmHr: rain,
+    conditionLabel,
+    surgeLevel,
+    dopplerRadarDbz: dbz,
+    barometricPressureHpa: pressure,
+    relativeHumidityPct: humidity,
+    windSpeedKmh: wind,
+    windDirection: 'WSW (245°)',
+    source: 'User-controlled intensity',
+    lastUpdated: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+  };
+}
+

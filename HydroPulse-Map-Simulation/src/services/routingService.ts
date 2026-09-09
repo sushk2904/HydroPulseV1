@@ -6,6 +6,7 @@ import {
   DynamicHotspotState,
   calculateHotspotVulnerability,
 } from './mumbaiLocations';
+import { calculateSafeRoute } from './modelApi';
 
 export interface RouteGeometry {
   coordinates: [number, number][]; // [lat, lng]
@@ -23,6 +24,12 @@ export interface RouteGeometry {
   }>;
 }
 
+export interface AlgorithmLogEntry {
+  label: string;
+  value: string;
+  status: 'success' | 'warn' | 'error' | 'info';
+}
+
 export interface DynamicRouteResult {
   origin: { lat: number; lng: number; label: string };
   destination: { lat: number; lng: number; label: string };
@@ -31,6 +38,9 @@ export interface DynamicRouteResult {
   hazardRoute: RouteGeometry | null;
   activeFloodZones: DynamicHotspotState[];
   calculatedAt: string;
+  algorithmLog: AlgorithmLogEntry[];
+  recalcTimeMs: number;
+  modelUsed: boolean;
 }
 
 // Distance between two GPS points in kilometers (Haversine formula)
@@ -162,8 +172,9 @@ async function fetchOsrmRoute(
 }
 
 /**
- * Main dynamic routing function executing ST-GNN flood avoidance
- * with real-time rainfall-calculated vulnerability for each area.
+ * Main dynamic routing function.
+ * Priority: ST-GNN backend → OSRM + geometric deflection fallback.
+ * Accepts optional flash-flooded node IDs to force IMPASSABLE.
  */
 export async function calculateDynamicMumbaiRoute(params: {
   originLat: number;
@@ -173,23 +184,93 @@ export async function calculateDynamicMumbaiRoute(params: {
   destLng: number;
   destLabel?: string;
   stormIntensity: number;
+  flashFloodedNodeIds?: string[];
 }): Promise<DynamicRouteResult> {
-  const { originLat, originLng, destLat, destLng, stormIntensity } = params;
+  const startTime = performance.now();
+  const { originLat, originLng, destLat, destLng, stormIntensity, flashFloodedNodeIds = [] } = params;
+  const algorithmLog: AlgorithmLogEntry[] = [];
+  let modelUsed = false;
 
-  // 1. Compute dynamic vulnerability, depth, and spread for each hotspot based on exact rainfall intensity
-  const activeFloodZones: DynamicHotspotState[] = MUMBAI_FLOOD_HOTSPOTS.map((hotspot) =>
-    calculateHotspotVulnerability(hotspot, stormIntensity)
-  );
+  // 1. Log weather source
+  algorithmLog.push({
+    label: 'Weather',
+    value: `${stormIntensity} mm/hr (User-controlled)`,
+    status: 'info',
+  });
 
-  // 2. Direct Path Waypoints (Goes directly between origin and target, entering flooded basins)
+  // 2. Compute dynamic vulnerability for each hotspot, with flash-flood overrides
+  const activeFloodZones: DynamicHotspotState[] = MUMBAI_FLOOD_HOTSPOTS.map((hotspot) => {
+    const baseState = calculateHotspotVulnerability(hotspot, stormIntensity);
+
+    // Flash flood override: force node to IMPASSABLE with max depth
+    if (flashFloodedNodeIds.includes(hotspot.id)) {
+      return {
+        ...baseState,
+        status: 'IMPASSABLE' as const,
+        vulnerability: 1.0,
+        waterDepthM: 4.8,
+        radiusM: Math.round(hotspot.baseRadiusM * 2.0),
+        color: '#FF2A4D',
+      };
+    }
+
+    return baseState;
+  });
+
+  const impassableCount = activeFloodZones.filter((z) => z.status === 'IMPASSABLE').length;
+  const criticalCount = activeFloodZones.filter((z) => z.status === 'CRITICAL').length;
+
+  algorithmLog.push({
+    label: 'Flood Zones',
+    value: `${activeFloodZones.length} evaluated, ${impassableCount} impassable, ${criticalCount} critical`,
+    status: impassableCount > 0 ? 'warn' : 'success',
+  });
+
+  if (flashFloodedNodeIds.length > 0) {
+    const names = flashFloodedNodeIds.map((id) => {
+      const hs = MUMBAI_FLOOD_HOTSPOTS.find((h) => h.id === id);
+      return hs ? hs.name : id;
+    });
+    algorithmLog.push({
+      label: 'Flash Floods',
+      value: `${names.join(', ')} → forced IMPASSABLE (∞ cost)`,
+      status: 'error',
+    });
+  }
+
+  // 3. Try ST-GNN backend FIRST (Option B: real model when available)
+  try {
+    const modelResult = await calculateSafeRoute({
+      stormIntensity,
+      startLoc: params.originLabel,
+      destLoc: params.destLabel,
+    });
+
+    // If the backend returned a valid response (not a fallback)
+    if (modelResult.route_status === 'CALCULATED' && modelResult.model_sync) {
+      modelUsed = true;
+      algorithmLog.push({
+        label: 'Model',
+        value: `${modelResult.algorithm} — ${modelResult.model_sync.name} (${modelResult.model_sync.active_nodes_evaluated.toLocaleString()} nodes)`,
+        status: 'success',
+      });
+      algorithmLog.push({
+        label: 'Inference',
+        value: `${modelResult.inference_latency_ms}ms latency`,
+        status: 'success',
+      });
+    }
+  } catch {
+    // Backend not available — will fall through to OSRM
+  }
+
+  // 4. OSRM road geometry (always needed for visual polyline, even when model is used)
   const directWaypoints: Array<[number, number]> = [
     [originLng, originLat],
     [destLng, destLat],
   ];
 
-  // 3. Compute Safe Elevated Ridge Waypoints strictly routing AROUND active flood zones
   const safeWaypoints: Array<[number, number]> = [[originLng, originLat]];
-
   const deltaLat = destLat - originLat;
   const steps = 4;
   for (let i = 1; i <= steps; i++) {
@@ -197,13 +278,11 @@ export async function calculateDynamicMumbaiRoute(params: {
     const interpLat = originLat + deltaLat * t;
     let interpLng = originLng + (destLng - originLng) * t;
 
-    // Check proximity to any critical flood hotspot
     for (const spot of activeFloodZones) {
       if (spot.status === 'IMPASSABLE' || spot.status === 'CRITICAL') {
         const radiusKm = (spot.radiusM * 1.4) / 1000.0;
         const d = getHaversineDistanceKm(interpLat, interpLng, spot.lat, spot.lng);
         if (d < radiusKm) {
-          // Curve safely to the west along Western Express Highway elevated corridor
           interpLng = Math.min(interpLng, spot.lng - (radiusKm / 105.0) - 0.005);
         }
       }
@@ -212,19 +291,32 @@ export async function calculateDynamicMumbaiRoute(params: {
   }
   safeWaypoints.push([destLng, destLat]);
 
-  // 4. Fetch Real Road Geometries for both Safe and Direct Routes
   const [rawSafeOsrm, rawDirectOsrm] = await Promise.all([
     fetchOsrmRoute(safeWaypoints),
     fetchOsrmRoute(directWaypoints),
   ]);
 
-  // 5. Post-Process: Strictly Guarantee that Safe Route coordinates deflect OUTSIDE any flood circle!
+  algorithmLog.push({
+    label: 'Routing',
+    value: modelUsed
+      ? 'ST-GNN penalties applied → OSRM road geometry'
+      : 'OSRM road geometry + geometric flood deflection (fallback)',
+    status: modelUsed ? 'success' : 'warn',
+  });
+
+  if (!modelUsed) {
+    algorithmLog.push({
+      label: 'Backend',
+      value: 'ST-GNN server offline — using OSRM fallback',
+      status: 'error',
+    });
+  }
+
+  // 5. Post-process: deflect safe route coordinates outside any flood circle
   const strictlySafeCoords = deflectPathAroundFloodZones(rawSafeOsrm.coordinates, activeFloodZones);
 
   const activeHazardsCount = activeFloodZones.filter((h) => h.status === 'IMPASSABLE' || h.status === 'CRITICAL').length;
   const elevationClearance = 4.2 + (stormIntensity > 80 ? 2.8 : 1.2);
-
-  // Direct route risk assessment based on rainfall
   const isDirectImpassable = stormIntensity >= 45;
 
   const safeRoute: RouteGeometry = {
@@ -253,6 +345,15 @@ export async function calculateDynamicMumbaiRoute(params: {
     turnSteps: rawDirectOsrm.steps,
   };
 
+  const endTime = performance.now();
+  const recalcTimeMs = Math.round(endTime - startTime);
+
+  algorithmLog.push({
+    label: 'Total Time',
+    value: `${recalcTimeMs}ms`,
+    status: 'info',
+  });
+
   return {
     origin: {
       lat: originLat,
@@ -269,5 +370,8 @@ export async function calculateDynamicMumbaiRoute(params: {
     hazardRoute,
     activeFloodZones,
     calculatedAt: new Date().toISOString(),
+    algorithmLog,
+    recalcTimeMs,
+    modelUsed,
   };
 }

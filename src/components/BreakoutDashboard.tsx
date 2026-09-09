@@ -6,7 +6,11 @@ import { WaveGridBackground } from './WaveGridBackground';
 
 gsap.registerPlugin(ScrollTrigger);
 
-export const BreakoutDashboard: React.FC = () => {
+interface BreakoutDashboardProps {
+  onLaunchSimulation?: () => void;
+}
+
+export const BreakoutDashboard: React.FC<BreakoutDashboardProps> = ({ onLaunchSimulation }) => {
   const [simulatingReroute, setSimulatingReroute] = useState(false);
   const headerRef = useRef<HTMLDivElement>(null);
   const cardsRef = useRef<HTMLDivElement>(null);
@@ -274,6 +278,21 @@ export const BreakoutDashboard: React.FC = () => {
             </div>
           </div>
 
+        </div>
+
+        {/* Climax Handoff CTA: Launch 3D Tactical Command Deck */}
+        <div className="mt-16 text-center max-w-2xl mx-auto flex flex-col items-center">
+          <button
+            onClick={onLaunchSimulation || (() => { window.location.hash = '#/simulation'; })}
+            className="group relative px-8 py-4 rounded-xl bg-gradient-to-r from-cyan-400 to-blue-500 text-black font-mono text-xs md:text-sm font-bold tracking-wider uppercase transition-all duration-300 hover:scale-105 shadow-[0_0_35px_rgba(0,217,255,0.45)] hover:shadow-[0_0_60px_rgba(0,217,255,0.8)] flex items-center gap-3 cursor-pointer pointer-events-auto"
+          >
+            <span className="w-2.5 h-2.5 rounded-full bg-black animate-ping" />
+            <span>LAUNCH 3D TACTICAL COMMAND DECK</span>
+            <CornerUpRight className="w-4 h-4 group-hover:translate-x-1 group-hover:-translate-y-0.5 transition-transform" />
+          </button>
+          <p className="mt-3 text-xs font-mono text-white/40 tracking-wider">
+            Initialize Mumbai 3D DEM Map, Sector Sensors & Dynamic ST-GAT-GRU Routing Engine
+          </p>
         </div>
       </div>
     </section>

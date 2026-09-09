@@ -3,7 +3,7 @@ import { motion, Variants } from 'framer-motion';
 
 interface ScrollTextProps {
   text: string;
-  as?: React.ElementType;
+  as?: any;
   className?: string;
   letterAnime?: boolean;
   lineAnime?: boolean;
