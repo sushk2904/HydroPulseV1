@@ -1,0 +1,228 @@
+<!DOCTYPE html><html lang="en" class="dark"><head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HydroPulse — Flood-Aware Routing for Mumbai</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,700;1,400&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap" rel="stylesheet">
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            surface: {
+              DEFAULT: '#0A0E14',
+              dim: '#05070A',
+              container: '#101419',
+              high: '#181C21',
+            },
+            accent: {
+              cyan: '#00D9FF',
+              violet: '#5B7FFF',
+              amber: '#FFB02A',
+            },
+            text: {
+              muted: '#878A8F',
+              subtle: '#555A64',
+            }
+          },
+          fontFamily: {
+            space: ['"Space Grotesk"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+            sans: ['Inter', 'sans-serif'],
+          },
+          animation: {
+            'drift-slow': 'drift 35s ease-in-out infinite alternate',
+            'pulse-slow': 'pulseGlow 4s ease-in-out infinite',
+            'bounce-subtle': 'subtleBounce 2.5s ease-in-out infinite',
+          },
+          keyframes: {
+            drift: {
+              '0%': { transform: 'scale(1.04) translate(0px, 0px)' },
+              '100%': { transform: 'scale(1.12) translate(-15px, -10px)' },
+            },
+            pulseGlow: {
+              '0%, 100%': { opacity: '0.35' },
+              '50%': { opacity: '0.65' },
+            },
+            subtleBounce: {
+              '0%, 100%': { transform: 'translateY(0)' },
+              '50%': { transform: 'translateY(6px)' },
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Custom HUD utilities */
+    .hud-cyan-glow {
+      text-shadow: 0 0 24px rgba(0, 217, 255, 0.45), 0 0 45px rgba(0, 217, 255, 0.2);
+    }
+    .hud-box-glow {
+      box-shadow: 0 0 20px rgba(0, 217, 255, 0.2), inset 0 0 15px rgba(0, 217, 255, 0.1);
+    }
+    .hud-btn-primary {
+      background: linear-gradient(135deg, #00D9FF 0%, #00B8D9 100%);
+      box-shadow: 0 0 25px rgba(0, 217, 255, 0.35);
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .hud-btn-primary:hover {
+      background: linear-gradient(135deg, #33E2FF 0%, #00D9FF 100%);
+      box-shadow: 0 0 35px rgba(0, 217, 255, 0.65);
+      transform: translateY(-1px);
+    }
+    .glass-nav {
+      background: rgba(5, 7, 10, 0.65);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border-bottom: 1px solid rgba(0, 217, 255, 0.12);
+    }
+    /* Subtle scanline overlay */
+    .scanlines {
+      background: linear-gradient(
+        rgba(10, 14, 20, 0) 50%,
+        rgba(0, 0, 0, 0.25) 50%
+      );
+      background-size: 100% 4px;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body class="bg-[#05070A] text-slate-100 font-sans antialiased overflow-x-hidden selection:bg-cyan-500/30 selection:text-cyan-200">
+
+  <!-- ==================== HERO SECTION (FULL VIEWPORT) ==================== -->
+  <section class="relative w-full h-screen min-h-[720px] flex flex-col justify-between overflow-hidden bg-[#05070A]">
+
+    <!-- 1. Background atmospheric cloud layer with slow cinematic drift -->
+    <div class="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+      <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuC2y6hANdODBKp6d_F0WX5RvuVOwDokfiNX9nBphlXzZ9qkfyXZKGF6iV9ZfS2U6D6u45KLWFqpY-g80qhNtuNu5Cl-nxlho26nHW7r7jXOIrqJOxD5uiw0lftwmavQvUlRHTs4z_Z2U-H8gMNDwpY1KEJQ67fGj9JClgR9ooyM3I2vrBKG35qb5YdDAnlQB0uwEzOy6Cf8N1OOhuQ4bNbu1-HbaYZfFaoLEblxL8MIXjV1K-WbJSzxaw" alt="Atmospheric monsoon cloud cover" class="w-full h-full object-cover object-center animate-drift-slow brightness-[0.75] contrast-[1.15] opacity-85">
+      <!-- Vignette and color grading overlays -->
+      <div class="absolute inset-0 bg-gradient-to-b from-[#05070A]/80 via-[#05070A]/35 to-[#05070A] mix-blend-multiply"></div>
+      <div class="absolute inset-0 bg-gradient-radial from-transparent via-[#05070A]/50 to-[#05070A]"></div>
+      <!-- Subtle scanline micro-texture -->
+      <div class="absolute inset-0 scanlines opacity-40"></div>
+    </div>
+
+    <!-- 2. Minimal Top Navigation Bar -->
+    <header class="relative z-30 w-full glass-nav" style="background: rgba(10, 14, 20, 0.6); backdrop-filter: blur(16px); border-bottom: 1px solid rgba(0, 217, 255, 0.18); box-shadow: rgba(0, 217, 255, 0.08) 0px 4px 20px;">
+      <div class="max-w-[1440px] mx-auto px-8 h-20 flex items-center justify-between">
+        
+        <!-- Left: Logo Mark + Wordmark -->
+        <a href="#" class="flex items-center gap-3.5 group">
+          <div class="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center p-0.5 border border-cyan-400/30 bg-[#0A0E14] group-hover:border-cyan-400/60 transition-colors shadow-[0_0_12px_rgba(0,217,255,0.15)]">
+            <img src="https://lh3.googleusercontent.com/aida/AEtjO1Wf-H3wf0UDzdTL7eDgVD4psbTI1-rCop_2_NhZWc-Da56Z7b2Kj_8XHaF7VnRWC_u7M3HGJS7eZ33zprCdfQch0xzK0UnklDlr59DduYuywcHbMFhUh-J6nO2JT6YJVyEHicRvlUporxzZKCy6AZytnmnFvSV8k-wobcx71w_sIUojKWF1_yRbzUwxRnNdYFSf1-gnyrXcV3MOV0g1_Z0Zc1VPjzW46zrfIxbngTvohARjzN9exaWYBhAe" alt="HydroPulse Icon" class="w-full h-full object-contain">
+          </div>
+          <span class="font-mono text-sm tracking-[0.28em] font-medium text-slate-200 group-hover:text-cyan-300 transition-colors uppercase">
+            HYDROPULSE
+          </span>
+          <span class="hidden sm:inline-flex px-1.5 py-0.5 text-[10px] font-mono text-cyan-400/80 bg-cyan-950/40 border border-cyan-500/20 rounded tracking-wider">
+            v2.4
+          </span>
+        </a>
+
+        <!-- Right: 4 Nav Links + Primary CTA -->
+        <nav class="flex items-center gap-8">
+          <div class="hidden md:flex items-center gap-7">
+            <a href="#how-it-works" class="font-sans text-sm font-normal text-slate-300 hover:text-cyan-400 transition-colors tracking-wide">
+              How It Works
+            </a>
+            <a href="#data" class="font-sans text-sm font-normal text-slate-300 hover:text-cyan-400 transition-colors tracking-wide">
+              Data
+            </a>
+            <a href="#demo" class="font-sans text-sm font-normal text-slate-300 hover:text-cyan-400 transition-colors tracking-wide">
+              Live Demo
+            </a>
+            <a href="#about" class="font-sans text-sm font-normal text-slate-300 hover:text-cyan-400 transition-colors tracking-wide">
+              About
+            </a>
+          </div>
+
+          <!-- Small Primary Button -->
+          <a href="#demo" class="hud-btn-primary px-4 py-2 rounded-md font-sans text-xs font-semibold text-[#05070A] tracking-wider uppercase inline-flex items-center gap-2 cursor-pointer">
+            <span class="">Live Demo</span>
+            <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M6 3L11 8L6 13" stroke="#05070A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+          </a>
+        </nav>
+
+      </div>
+    </header>
+
+    <!-- 3. Centered Headline Block & CTA -->
+    <main class="relative z-20 max-w-[1440px] mx-auto px-6 w-full my-auto flex flex-col items-center justify-center text-center">
+      
+      <div class="max-w-3xl flex flex-col items-center">
+        <!-- Headline -->
+        <h1 class="font-space text-6xl md:text-7xl lg:text-[84px] font-bold tracking-[0.24em] uppercase text-transparent bg-clip-text bg-gradient-to-b from-white via-cyan-100 to-[#00D9FF] hud-cyan-glow select-none pl-4">
+          HYDROPULSE
+        </h1>
+
+        <!-- One-line mission statement -->
+        <p class="mt-6 font-sans text-lg md:text-xl font-normal text-slate-300 tracking-wide max-w-2xl leading-relaxed">
+          Flood-aware routing for Mumbai, powered by real hydraulic simulation.
+        </p>
+
+        <!-- Technical JetBrains Mono telemetry label -->
+        <div class="mt-5 inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded bg-[#0A0E14]/80 border border-cyan-500/25 backdrop-blur-md" style="background: rgba(10, 14, 20, 0.6); backdrop-filter: blur(16px); border: 1px solid rgba(0, 217, 255, 0.25); border-radius: 8px; box-shadow: rgba(0, 217, 255, 0.14) 0px 0px 16px;">
+          <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping"></span>
+          <span class="font-mono text-xs md:text-[13px] tracking-[0.16em] text-cyan-400 uppercase font-medium">
+            [ LIVE MONSOON ROUTING ENGINE ]
+          </span>
+        </div>
+
+        <!-- Primary CTA Button -->
+        <div class="mt-9">
+          <button type="button" class="hud-btn-primary px-8 py-3.5 rounded-lg font-sans text-sm md:text-base font-semibold text-[#05070A] tracking-wider uppercase inline-flex items-center gap-3 cursor-pointer group">
+            <span class="">Enter the Grid</span>
+            <svg class="w-4 h-4 transition-transform group-hover:translate-x-1" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M3 8H13M13 8L9 4M13 8L9 12" stroke="#05070A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- 4. Subtle Bottom Scroll Cue -->
+    <footer class="relative z-20 w-full px-8 py-3.5 flex items-center justify-between pointer-events-auto" style="background: rgba(10, 14, 20, 0.6); backdrop-filter: blur(16px); border-top: 1px solid rgba(0, 217, 255, 0.18); box-shadow: rgba(0, 217, 255, 0.08) 0px -4px 20px;">
+      <div class="flex items-center gap-3 font-mono text-[11px] text-slate-500 tracking-wider">
+        <span class="text-cyan-500/60">SYS_STATUS:</span>
+        <span class="text-slate-400">ATMOSPHERIC MONITORING ACTIVE</span>
+        <span class="text-slate-600">|</span>
+        <span class="">18.9220° N, 72.8346° E</span>
+      </div>
+      <a href="#descent" class="flex items-center gap-1.5 text-cyan-400/75 hover:text-cyan-300 transition-colors group cursor-pointer focus:outline-none">
+        <span class="font-mono text-[11px] tracking-[0.28em] text-cyan-400/80 group-hover:text-cyan-300 transition-colors uppercase font-medium">SCROLL</span>
+        <div class="animate-bounce-subtle flex flex-col items-center">
+          <svg class="w-3.5 h-3.5 stroke-cyan-400 group-hover:stroke-cyan-300 transition-colors" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M6 9L12 15L18 9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+          </svg>
+        </div>
+      </a>
+      <div class="flex items-center gap-2 font-mono text-[11px] text-slate-500 tracking-wider">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400/80"></span>
+        <span class="text-slate-400">SWMM_CORE: READY</span>
+      </div>
+    </footer>
+
+    <!-- Subtle corner HUD coordinates & telemetry status -->
+    
+
+    
+
+  </section>
+
+
+
+
+
+
+
+
+</body></html>

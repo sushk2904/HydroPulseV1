@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: auto;
+  }
+  body {
+    background-color: #050505;
+    color: #E0E2EA;
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    min-height: 100vh;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+}
+
+/* Custom HUD Utilities */
+.hud-cyan-glow {
+  text-shadow: 0 0 16px rgba(0, 217, 255, 0.6), 0 0 32px rgba(0, 217, 255, 0.3);
+}
+
+.hud-box-glow {
+  box-shadow: 0 0 20px rgba(0, 217, 255, 0.2), inset 0 0 15px rgba(0, 217, 255, 0.1);
+}
+
+.hud-border {
+  border: 1px solid rgba(0, 217, 255, 0.2);
+}
+
+.hud-panel {
+  background: rgba(10, 14, 20, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 217, 255, 0.18);
+}
+
+/* Subtle scanlines effect */
+.scanlines {
+  background: linear-gradient(
+    rgba(5, 5, 5, 0) 50%,
+    rgba(0, 0, 0, 0.3) 50%
+  );
+  background-size: 100% 4px;
+  pointer-events: none;
+}
+
+/* Hero Animations and Button Styles */
+@keyframes drift {
+  0% { transform: scale(1.04) translate(0px, 0px); }
+  100% { transform: scale(1.12) translate(-15px, -10px); }
+}
+
+@keyframes subtleBounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(6px); }
+}
+
+.animate-drift-slow {
+  animation: drift 35s ease-in-out infinite alternate;
+}
+
+.animate-bounce-subtle {
+  animation: subtleBounce 2.5s ease-in-out infinite;
+}
+
+.hud-btn-primary {
+  background: linear-gradient(135deg, #00D9FF 0%, #00B8D9 100%);
+  box-shadow: 0 0 25px rgba(0, 217, 255, 0.35);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.hud-btn-primary:hover {
+  background: linear-gradient(135deg, #33E2FF 0%, #00D9FF 100%);
+  box-shadow: 0 0 35px rgba(0, 217, 255, 0.65);
+  transform: translateY(-1px);
+}

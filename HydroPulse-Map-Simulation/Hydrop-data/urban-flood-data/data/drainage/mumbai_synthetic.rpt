@@ -1,0 +1,33 @@
+
+  EPA STORM WATER MANAGEMENT MODEL - VERSION 5.2 (Build 5.2.4)
+  PYSWMM TOOLKIT API - VERSION v1.0 (2026-02-26)
+  ------------------------------------------------------------
+
+  Synthetic Drainage Network 
+  WARNING 08: elevation drop exceeds length for Conduit pipe_47805
+  WARNING 08: elevation drop exceeds length for Conduit pipe_40611
+  WARNING 04: minimum elevation drop used for Conduit pipe_13105
+  WARNING 04: minimum elevation drop used for Conduit pipe_20523
+  WARNING 04: minimum elevation drop used for Conduit pipe_23832
+  WARNING 08: elevation drop exceeds length for Conduit pipe_34269
+  WARNING 08: elevation drop exceeds length for Conduit pipe_41026
+  WARNING 08: elevation drop exceeds length for Conduit pipe_47125
+  WARNING 08: elevation drop exceeds length for Conduit pipe_43522
+  WARNING 08: elevation drop exceeds length for Conduit pipe_45919
+  WARNING 08: elevation drop exceeds length for Conduit pipe_47518
+  WARNING 08: elevation drop exceeds length for Conduit pipe_36897
+  WARNING 08: elevation drop exceeds length for Conduit pipe_48214
+  WARNING 08: elevation drop exceeds length for Conduit pipe_8821
+  WARNING 08: elevation drop exceeds length for Conduit pipe_50928
+  WARNING 08: elevation drop exceeds length for Conduit pipe_51310
+  WARNING 08: elevation drop exceeds length for Conduit pipe_51402
+  WARNING 08: elevation drop exceeds length for Conduit pipe_52188
+  WARNING 08: elevation drop exceeds length for Conduit pipe_52191
+  WARNING 08: elevation drop exceeds length for Conduit pipe_52552
+  WARNING 08: elevation drop exceeds length for Conduit pipe_52979
+  WARNING 08: elevation drop exceeds length for Conduit pipe_53446
+  WARNING 04: minimum elevation drop used for Conduit pipe_55503
+
+  Analysis begun on:  Sun Sep  6 14:18:31 2026
+  Analysis ended on:  Sun Sep  6 14:18:31 2026
+  Total elapsed time: < 1 sec
