@@ -187,6 +187,7 @@ export const FloodScrollytelling: React.FC<FloodScrollytellingProps> = ({ onLaun
       wheelMultiplier: 1,
       touchMultiplier: 2,
     });
+    (window as any).__lenis = lenis;
 
     lenis.on('scroll', ScrollTrigger.update);
     const tickerCb = (time: number) => lenis.raf(time * 1000);
@@ -218,6 +219,7 @@ export const FloodScrollytelling: React.FC<FloodScrollytellingProps> = ({ onLaun
     window.addEventListener('resize', onResize);
 
     return () => {
+      (window as any).__lenis = undefined;
       window.removeEventListener('resize', onResize);
       st.kill();
       gsap.ticker.remove(tickerCb);

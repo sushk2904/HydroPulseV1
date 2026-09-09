@@ -3,7 +3,6 @@ import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
 import { TacticalNavbar } from './components/TacticalNavbar';
-import { HeroSection } from './components/HeroSection';
 import { TacticalHeader } from './components/TacticalHeader';
 import { TacticalGridFrame } from './components/TacticalGridFrame';
 import { RoutingControlPanel } from './components/RoutingControlPanel';
@@ -31,6 +30,7 @@ export function App() {
   const [algorithmLog, setAlgorithmLog] = useState<AlgorithmLogEntry[]>([]);
   const [lastRecalcMs, setLastRecalcMs] = useState<number>(0);
   const [modelUsed, setModelUsed] = useState<boolean>(false);
+  const [historyRefreshKey, setHistoryRefreshKey] = useState<number>(0);
 
   // Interactive map pinning mode
   const [pinMode, setPinMode] = useState<'none' | 'origin' | 'dest'>('none');
@@ -46,12 +46,13 @@ export function App() {
   // Debounce ref for slider changes
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Compute dynamic flood-aware route
+  // Compute dynamic flood-aware route and optionally archive to operator history
   const executeRouting = useCallback(async (
     orig = originLoc,
     dest = destLoc,
     intensity = stormIntensity,
-    floodedNodes = flashFloodedNodes
+    floodedNodes = flashFloodedNodes,
+    saveHistory = false
   ) => {
     try {
       const res = await calculateDynamicMumbaiRoute({
@@ -69,25 +70,51 @@ export function App() {
       setAlgorithmLog(res.algorithmLog);
       setLastRecalcMs(res.recalcTimeMs);
       setModelUsed(res.modelUsed);
+
+      // Record dispatch log in backend if user is authenticated and archive requested
+      const token = localStorage.getItem('hydropulse_token');
+      if (token && saveHistory) {
+        fetch('/api/routes/history', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            origin: orig.name,
+            destination: dest.name,
+            storm_intensity: intensity,
+            status: res.safeRoute.passability.includes('100%') ? 'COMPLETED' : 'REROUTED',
+            status_label: res.safeRoute.passability,
+            hazards_bypassed: res.safeRoute.hazardsBypassedCount,
+            est_time: `${res.safeRoute.durationMin} MIN`,
+            elevation_clearance: `+${res.safeRoute.elevationGainM}m AMSL`,
+            route_sector: `${orig.sector || 'MUMBAI CORRIDOR'} TO ${dest.sector || 'SECTOR TERMINAL'}`,
+          }),
+        })
+          .then((r) => r.json())
+          .then(() => setHistoryRefreshKey((k) => k + 1))
+          .catch(() => {});
+      }
     } catch (e) {
       console.error('Error computing dynamic route:', e);
     }
   }, [originLoc, destLoc, stormIntensity, flashFloodedNodes]);
 
-  // Initial calculation on mount
+  // Initial calculation on mount (without archiving dummy history)
   useEffect(() => {
-    executeRouting(originLoc, destLoc, stormIntensity, flashFloodedNodes);
+    executeRouting(originLoc, destLoc, stormIntensity, flashFloodedNodes, false);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Re-route when origin/dest changes (immediate)
+  // Re-route when origin/dest changes (archived to history)
   const handleSelectOrigin = useCallback((loc: MumbaiLocation) => {
     setOriginLoc(loc);
-    executeRouting(loc, destLoc, stormIntensity, flashFloodedNodes);
+    executeRouting(loc, destLoc, stormIntensity, flashFloodedNodes, true);
   }, [destLoc, stormIntensity, flashFloodedNodes, executeRouting]);
 
   const handleSelectDest = useCallback((loc: MumbaiLocation) => {
     setDestLoc(loc);
-    executeRouting(originLoc, loc, stormIntensity, flashFloodedNodes);
+    executeRouting(originLoc, loc, stormIntensity, flashFloodedNodes, true);
   }, [originLoc, stormIntensity, flashFloodedNodes, executeRouting]);
 
   // Storm intensity change (debounced 300ms for slider, immediate for presets)
@@ -156,59 +183,61 @@ export function App() {
     }
   }, []);
 
-  const handleScrollToGrid = useCallback(() => {
-    const gridElem = document.getElementById('query-grid');
-    if (gridElem) {
-      gridElem.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, []);
-
-  // GSAP ScrollTrigger entrance animation for Tactical Command Deck
+  // GSAP entrance animation for Tactical Command Deck
   useGSAP(
     () => {
-      const deck = commandDeckRef.current;
       const container = deckContainerRef.current;
-      if (!deck || !container) return;
+      if (!container) return;
 
       gsap.fromTo(
         container,
         {
-          opacity: 0.2,
-          y: 60,
-          scale: 0.98,
+          opacity: 0,
+          y: 20,
         },
         {
           opacity: 1,
           y: 0,
-          scale: 1,
-          duration: 1.1,
-          ease: 'power3.out',
-          scrollTrigger: {
-            trigger: deck,
-            start: 'top 85%',
-            end: 'top 45%',
-            scrub: false,
-            toggleActions: 'play none none reverse',
-          },
+          duration: 0.6,
+          ease: 'power2.out',
         }
       );
     },
     { scope: commandDeckRef }
   );
 
+  const handleReplayVector = useCallback((item: any) => {
+    const foundOrig =
+      MUMBAI_LOCATIONS.find((l) =>
+        item.origin.toLowerCase().includes(l.name.toLowerCase()) ||
+        l.name.toLowerCase().includes(item.origin.toLowerCase())
+      ) || originLoc;
+    const foundDest =
+      MUMBAI_LOCATIONS.find((l) =>
+        item.destination.toLowerCase().includes(l.name.toLowerCase()) ||
+        l.name.toLowerCase().includes(item.destination.toLowerCase())
+      ) || destLoc;
+
+    const intensity = item.stormIntensity || 75;
+    setOriginLoc(foundOrig);
+    setDestLoc(foundDest);
+    setStormIntensity(intensity);
+    executeRouting(foundOrig, foundDest, intensity, flashFloodedNodes, true);
+
+    const gridElem = document.getElementById('query-grid');
+    if (gridElem) gridElem.scrollIntoView({ behavior: 'smooth' });
+  }, [originLoc, destLoc, flashFloodedNodes, executeRouting]);
+
   return (
     <div className="bg-[#05070A] font-['Metrophobic'] text-[#e0e2ea] antialiased selection:bg-[#00d9ff]/30 selection:text-[#00d9ff] scroll-smooth">
       {/* Navigation */}
       <TacticalNavbar />
 
-      {/* SECTION 1: Hero */}
-      <HeroSection onEnterGrid={handleScrollToGrid} />
-
-      {/* SECTION 2: Command Deck */}
+      {/* Command Deck Main Section */}
       <section
         ref={commandDeckRef}
         id="query-grid"
-        className="relative w-full bg-[#0d1117] py-4 sm:py-6 px-3 sm:px-4 lg:px-6 flex flex-col justify-start"
+        className="relative w-full bg-[#0d1117] pt-18 sm:pt-20 pb-6 sm:pb-8 px-3 sm:px-4 lg:px-6 flex flex-col justify-start min-h-screen"
       >
         <div ref={deckContainerRef} className="w-full max-w-7xl mx-auto flex flex-col will-change-transform">
           {/* Section Header */}
@@ -240,7 +269,7 @@ export function App() {
                 modelUsed={modelUsed}
                 onSelectOrigin={handleSelectOrigin}
                 onSelectDest={handleSelectDest}
-                onCalculateRoute={() => executeRouting(originLoc, destLoc, stormIntensity, flashFloodedNodes)}
+                onCalculateRoute={() => executeRouting(originLoc, destLoc, stormIntensity, flashFloodedNodes, true)}
                 onIntensityChange={handleIntensityChange}
                 onFlashFlood={handleFlashFlood}
                 onRandomFlashFlood={handleRandomFlashFlood}
@@ -263,8 +292,11 @@ export function App() {
         </div>
       </section>
 
-      {/* SECTION 3: Telemetry */}
-      <TacticalTelemetryDeck />
+      {/* SECTION 3: Telemetry & Operator History */}
+      <TacticalTelemetryDeck
+        refreshKey={historyRefreshKey}
+        onReplayVector={handleReplayVector}
+      />
     </div>
   );
 }

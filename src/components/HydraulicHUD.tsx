@@ -405,14 +405,16 @@ export const HydraulicHUD: React.FC<HydraulicHUDProps> = ({
 
       {/* ——— BOTTOM-RIGHT: Scroll prompt ——— */}
       <div
-        className="absolute bottom-8 right-8 md:right-14"
+        className="absolute bottom-8 right-8 md:right-14 pointer-events-none"
         style={{
           opacity: showScrollHint ? 0.65 : 0,
           transition: 'opacity 0.7s ease',
         }}
       >
-        <div className="flex items-center gap-2.5 font-mono text-[10px] tracking-[0.28em] uppercase"
-          style={{ color: 'rgba(255,255,255,0.45)' }}>
+        <div
+          className="flex items-center gap-2.5 font-mono text-[10px] tracking-[0.28em] uppercase"
+          style={{ color: 'rgba(255,255,255,0.45)' }}
+        >
           <span>SCROLL TO SIMULATE</span>
           <svg width="10" height="10" viewBox="0 0 12 12" fill="none" className="animate-bounce">
             <path d="M6 2L6 10M6 10L2 6M6 10L10 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>

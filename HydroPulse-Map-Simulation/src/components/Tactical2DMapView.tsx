@@ -26,7 +26,6 @@ export const Tactical2DMapView = memo(function Tactical2DMapView({
   const floodLayersGroupRef = useRef<L.LayerGroup | null>(null);
   
   const [activeLayer, setActiveLayer] = useState<'dark' | 'satellite' | 'street'>('dark');
-  const [showHazardPath, setShowHazardPath] = useState<boolean>(true);
   const [localPinMode, setLocalPinMode] = useState<'none' | 'origin' | 'dest'>('none');
 
   const pinMode = externalPinMode !== undefined ? externalPinMode : localPinMode;
@@ -152,7 +151,7 @@ export const Tactical2DMapView = memo(function Tactical2DMapView({
     }
 
     // 2. Draw Blocked Hazard Route (Red Dashed, crossing straight into flood basins)
-    if (showHazardPath && activeRoute.hazardRoute?.coordinates && activeRoute.hazardRoute.coordinates.length > 1) {
+    if (activeRoute.hazardRoute?.coordinates && activeRoute.hazardRoute.coordinates.length > 1) {
       const hazardLine = L.polyline(activeRoute.hazardRoute.coordinates, {
         color: '#FF2A4D',
         weight: 3.5,
@@ -245,7 +244,7 @@ export const Tactical2DMapView = memo(function Tactical2DMapView({
       ]);
       map.flyToBounds(bounds, { padding: [50, 50], duration: 1.4 });
     }
-  }, [activeRoute, showHazardPath]);
+  }, [activeRoute]);
 
   // Recenter button
   const handleRecenter = () => {
@@ -273,10 +272,6 @@ export const Tactical2DMapView = memo(function Tactical2DMapView({
             <span className="material-symbols-outlined text-[#00FF66] text-[18px]">map</span>
             <span className="font-bold text-[#e0e2ea] tracking-wider uppercase font-['Space_Grotesk'] text-[11px]">
               2D High-Precision Tactical Road Network (Mumbai GIS)
-            </span>
-            <span className="text-[#3c494d]">|</span>
-            <span className="text-[#00FF66] font-semibold font-mono">
-              ST-GNN CORRIDOR // STRICT HAZARD BYPASS ACTIVE
             </span>
           </div>
 
@@ -414,13 +409,6 @@ export const Tactical2DMapView = memo(function Tactical2DMapView({
               <span className="w-2 h-2 rounded-full bg-[#FF2A4D] shadow-[0_0_6px_#FF2A4D]" />
               <span className="text-slate-200">INUNDATED FLOOD BASINS (LIVE)</span>
             </div>
-            <button
-              type="button"
-              onClick={() => setShowHazardPath((p) => !p)}
-              className="ml-1 text-[8px] px-1.5 py-0.5 rounded bg-[#1e2736] text-slate-300 hover:text-white border border-slate-600 cursor-pointer"
-            >
-              {showHazardPath ? 'HIDE BLOCKED VECTOR' : 'SHOW BLOCKED VECTOR'}
-            </button>
           </div>
 
           {/* Turn-by-Turn Road Guidance Step Pill (Bottom Right) */}

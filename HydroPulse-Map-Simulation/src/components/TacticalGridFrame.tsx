@@ -1,6 +1,7 @@
 import React, { useRef, useState, useCallback, useEffect, memo } from 'react';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { GridSkeletonScene } from './GridSkeletonScene';
+import { KineticTextLoader } from '@/components/ui/kinetic-text-loader';
 
 interface TacticalGridFrameProps {
   stormIntensity: number;
@@ -17,6 +18,8 @@ export const TacticalGridFrame = memo(function TacticalGridFrame({
   const currentProgressRef = useRef<number>(0.0);
   const isAutoPlayingRef = useRef<boolean>(false);
   const [hasDived, setHasDived] = useState<boolean>(false);
+  const [isSceneLoading, setIsSceneLoading] = useState<boolean>(true);
+  const [showLoaderOverlay, setShowLoaderOverlay] = useState<boolean>(true);
 
   // DOM & Three.js Refs
   const frameRef = useRef<HTMLDivElement>(null);
@@ -27,6 +30,15 @@ export const TacticalGridFrame = memo(function TacticalGridFrame({
 
   const handleDiveComplete = useCallback(() => {
     setHasDived(true);
+  }, []);
+
+  const handleLoadingStateChange = useCallback((loading: boolean) => {
+    setIsSceneLoading(loading);
+    if (!loading) {
+      setTimeout(() => {
+        setShowLoaderOverlay(false);
+      }, 500);
+    }
   }, []);
 
   // PREVENT WEBPAGE FROM SCROLLING ON MOUSE WHEEL OVER THE 3D MAP BOX
@@ -126,8 +138,8 @@ export const TacticalGridFrame = memo(function TacticalGridFrame({
               Tactical Grid Viewport
             </span>
             <span className="text-[#3c494d]">|</span>
-            <span ref={inundationStatusRef} className="text-[#859398]">
-              SURGE SIMULATION: STANDBY
+            <span ref={inundationStatusRef} className="text-[#00d9ff] font-semibold">
+              SURGE SIMULATION: ACTIVE
             </span>
           </div>
 
@@ -145,6 +157,17 @@ export const TacticalGridFrame = memo(function TacticalGridFrame({
           onMouseLeave={handleMouseLeave}
           className="relative w-full h-[470px] sm:h-[490px] bg-[#05070a] overflow-hidden"
         >
+          {/* Clean Kinetic Text Loader Overlay during 3D data fetch */}
+          {showLoaderOverlay && (
+            <div
+              className={`absolute inset-0 z-30 bg-[#05070a] flex flex-col items-center justify-center transition-opacity duration-500 select-none ${
+                isSceneLoading ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+              }`}
+            >
+              <KineticTextLoader text="Loading" />
+            </div>
+          )}
+
           {/* Embedded 3D Canvas Scene */}
           <div className="absolute inset-0 w-full h-full">
             <GridSkeletonScene
@@ -158,6 +181,7 @@ export const TacticalGridFrame = memo(function TacticalGridFrame({
               externalControlsRef={controlsRef}
               hasDived={hasDived}
               onDiveComplete={handleDiveComplete}
+              onLoadingStateChange={handleLoadingStateChange}
             />
           </div>
 

@@ -1,11 +1,11 @@
-import React, { memo, useRef, useState } from 'react';
+import React, { memo, useRef, useState, useEffect } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
 
 gsap.registerPlugin(ScrollTrigger);
 
-interface DispatchHistoryItem {
+export interface DispatchHistoryItem {
   id: string;
   timestamp: string;
   origin: string;
@@ -16,103 +16,54 @@ interface DispatchHistoryItem {
   hazardsBypassed: number;
   estTime: string;
   elevationClearance: string;
-  operator: string;
   routeSector: string;
 }
 
-const DISPATCH_HISTORY: DispatchHistoryItem[] = [
-  {
-    id: 'DISP-904-01',
-    timestamp: '08 SEP 2026 // 18:42 IST',
-    origin: 'SECTOR A-12 [WESTERN CORRIDOR / BANDRA]',
-    destination: 'SECTOR E-04 [NORTH TERMINAL / SEEPZ]',
-    stormIntensity: 75,
-    status: 'COMPLETED',
-    statusLabel: 'OPTIMAL // 100% CLEAR',
-    hazardsBypassed: 9,
-    estTime: '24 MIN',
-    elevationClearance: '+6.2m AMSL',
-    operator: 'Capt. S. Varma',
-    routeSector: 'GOREGAON-BANDRA ARTERIAL',
-  },
-  {
-    id: 'DISP-904-02',
-    timestamp: '08 SEP 2026 // 16:15 IST',
-    origin: 'COLABA NAVAL DOCKYARD [SECTOR S-01]',
-    destination: 'DADAR TT EMERGENCY HOSPITAL [SECTOR C-03]',
-    stormIntensity: 110,
-    status: 'REROUTED',
-    statusLabel: 'MITHI OVERFLOW BYPASSED',
-    hazardsBypassed: 14,
-    estTime: '31 MIN',
-    elevationClearance: '+4.8m AMSL',
-    operator: 'Capt. S. Varma',
-    routeSector: 'SOUTH COASTAL TO CENTRAL BOWL',
-  },
-  {
-    id: 'DISP-904-03',
-    timestamp: '08 SEP 2026 // 14:08 IST',
-    origin: 'BKC FINANCIAL CORE [SECTOR B-08]',
-    destination: 'WESTERN EXPRESS HWY [SECTOR W-02]',
-    stormIntensity: 145,
-    status: 'REROUTED',
-    statusLabel: 'FLASH FLOOD DIVERTER ENGAGED',
-    hazardsBypassed: 18,
-    estTime: '28 MIN',
-    elevationClearance: '+5.4m AMSL',
-    operator: 'Capt. S. Varma',
-    routeSector: 'KURLA-BKC DEPRESSION CLEARED',
-  },
-  {
-    id: 'DISP-904-04',
-    timestamp: '08 SEP 2026 // 11:30 IST',
-    origin: 'ANDHERI EAST TRANSIT HUB [SECTOR N-02]',
-    destination: 'MAHIM TIDAL CAUSEWAY [SECTOR M-05]',
-    stormIntensity: 40,
-    status: 'DIRECT',
-    statusLabel: 'STANDARD PASSABLE',
-    hazardsBypassed: 0,
-    estTime: '19 MIN',
-    elevationClearance: '+3.9m AMSL',
-    operator: 'Capt. S. Varma',
-    routeSector: 'CENTRAL ARTERIAL SPINE',
-  },
-  {
-    id: 'DISP-904-05',
-    timestamp: '08 SEP 2026 // 09:12 IST',
-    origin: 'WORLI SEA FACE HUB [SECTOR W-04]',
-    destination: 'VILE PARLE WEST DEPOT [SECTOR V-01]',
-    stormIntensity: 65,
-    status: 'COMPLETED',
-    statusLabel: 'COASTAL VECTOR OPTIMAL',
-    hazardsBypassed: 4,
-    estTime: '17 MIN',
-    elevationClearance: '+7.1m AMSL',
-    operator: 'Capt. S. Varma',
-    routeSector: 'COASTAL HIGHWAY ELEVATION',
-  },
-  {
-    id: 'DISP-904-06',
-    timestamp: '07 SEP 2026 // 22:45 IST',
-    origin: 'KURLA EAST JUNCTION [SECTOR K-02]',
-    destination: 'CHHATRAPATI SHIVAJI CARGO GATE',
-    stormIntensity: 90,
-    status: 'REROUTED',
-    statusLabel: 'KURLA SINK CLEARED',
-    hazardsBypassed: 11,
-    estTime: '22 MIN',
-    elevationClearance: '+8.2m AMSL',
-    operator: 'Capt. S. Varma',
-    routeSector: 'AIRPORT ELEVATED CORRIDOR',
-  },
-];
+interface TacticalTelemetryDeckProps {
+  refreshKey?: number;
+  onReplayVector?: (item: DispatchHistoryItem) => void;
+}
 
-export const TacticalTelemetryDeck = memo(function TacticalTelemetryDeck() {
+export const TacticalTelemetryDeck = memo(function TacticalTelemetryDeck({
+  refreshKey = 0,
+  onReplayVector,
+}: TacticalTelemetryDeckProps) {
   const sectionRef = useRef<HTMLElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const cardsRef = useRef<HTMLDivElement>(null);
+
+  const [history, setHistory] = useState<DispatchHistoryItem[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [filter, setFilter] = useState<'ALL' | 'REROUTED' | 'COMPLETED' | 'DIRECT'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Fetch live per-user history from backend
+  useEffect(() => {
+    const token = localStorage.getItem('hydropulse_token');
+    if (!token) {
+      setHistory([]);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    fetch('/api/routes/history', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed to fetch history');
+        return res.json();
+      })
+      .then((data) => {
+        setHistory(data.history || []);
+      })
+      .catch(() => {
+        setHistory([]);
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
+  }, [refreshKey]);
 
   useGSAP(
     () => {
@@ -139,31 +90,31 @@ export const TacticalTelemetryDeck = memo(function TacticalTelemetryDeck() {
       }
 
       // 2. Staggered History Cards Reveal
-      if (cardsRef.current) {
+      if (cardsRef.current && cardsRef.current.children.length > 0) {
         const cards = cardsRef.current.children;
         gsap.fromTo(
           cards,
-          { opacity: 0, y: 40, scale: 0.96 },
+          { opacity: 0, y: 30, scale: 0.98 },
           {
             opacity: 1,
             y: 0,
             scale: 1,
-            duration: 0.6,
-            stagger: 0.08,
+            duration: 0.5,
+            stagger: 0.06,
             ease: 'power3.out',
             scrollTrigger: {
               trigger: cardsRef.current,
-              start: 'top 82%',
+              start: 'top 85%',
               toggleActions: 'play none none reverse',
             },
           }
         );
       }
     },
-    { scope: sectionRef }
+    { scope: sectionRef, dependencies: [history.length] }
   );
 
-  const filteredHistory = DISPATCH_HISTORY.filter((item) => {
+  const filteredHistory = history.filter((item) => {
     if (filter !== 'ALL' && item.status !== filter) return false;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -187,31 +138,9 @@ export const TacticalTelemetryDeck = memo(function TacticalTelemetryDeck() {
         <div ref={headerRef} className="flex flex-col gap-3 border-b border-[#3c494d]/30 pb-4">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
             <div>
-              <div className="flex items-center gap-2 mb-1">
-                <span className="w-2 h-2 rounded-full bg-[#00FF66] animate-pulse shadow-[0_0_8px_#00FF66]" />
-                <span className="text-[11px] font-mono tracking-[0.2em] text-[#00d9ff] uppercase font-semibold">
-                  DISPATCH LOGS // OPERATIONAL HISTORY
-                </span>
-              </div>
               <h2 className="font-['Space_Grotesk'] text-2xl sm:text-3xl font-bold tracking-tight text-slate-100 uppercase">
                 Real-Time User Dispatch & Incident Route Archive
               </h2>
-            </div>
-
-            {/* Quick Summary Meta */}
-            <div className="flex items-center gap-3 font-mono text-[10px] self-start md:self-auto">
-              <div className="px-3 py-1.5 rounded-lg bg-[#111722]/90 border border-cyan-500/25">
-                <span className="text-slate-400">TOTAL DISPATCHES: </span>
-                <span className="text-cyan-300 font-bold">142</span>
-              </div>
-              <div className="px-3 py-1.5 rounded-lg bg-[#111722]/90 border border-[#00FF66]/25">
-                <span className="text-slate-400">SAFE PASSABILITY: </span>
-                <span className="text-[#00FF66] font-bold">100%</span>
-              </div>
-              <div className="hidden sm:block px-3 py-1.5 rounded-lg bg-[#111722]/90 border border-amber-500/25">
-                <span className="text-slate-400">AVG INFERENCE: </span>
-                <span className="text-amber-300 font-bold">14ms</span>
-              </div>
             </div>
           </div>
 
@@ -248,103 +177,136 @@ export const TacticalTelemetryDeck = memo(function TacticalTelemetryDeck() {
           </div>
         </div>
 
-        {/* 2. Grid Matrix of User Dispatch Logs */}
-        <div ref={cardsRef} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredHistory.map((item) => (
-            <div
-              key={item.id}
-              className="relative bg-[#0b0f17]/90 backdrop-blur-xl rounded-xl border border-cyan-500/20 p-4 shadow-[0_4px_24px_rgba(0,0,0,0.5)] flex flex-col justify-between hover:border-cyan-400/50 transition-all group"
-            >
-              {/* Corner Accents */}
-              <div className="pointer-events-none absolute top-0 left-0 w-2.5 h-2.5 border-t border-l border-[#00d9ff]/60" />
-              <div className="pointer-events-none absolute top-0 right-0 w-2.5 h-2.5 border-t border-r border-[#00d9ff]/60" />
-
-              <div>
-                {/* Log Header */}
-                <div className="flex items-center justify-between border-b border-[#3c494d]/30 pb-2 mb-2.5">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-bold text-cyan-300 tracking-wider">
-                      {item.id}
-                    </span>
-                    <span className="text-[9px] text-slate-500 font-mono">
-                      {item.timestamp}
-                    </span>
-                  </div>
-                  <span
-                    className={`px-2 py-0.5 rounded text-[8px] font-mono font-bold tracking-wider ${
-                      item.status === 'REROUTED'
-                        ? 'bg-amber-950/70 text-amber-300 border border-amber-500/40'
-                        : item.status === 'COMPLETED'
-                        ? 'bg-emerald-950/70 text-emerald-300 border border-emerald-500/40'
-                        : 'bg-cyan-950/70 text-cyan-300 border border-cyan-500/40'
-                    }`}
-                  >
-                    {item.status}
-                  </span>
-                </div>
-
-                {/* Route Vector Details */}
-                <div className="space-y-2 mb-3">
-                  <div className="flex items-start gap-2">
-                    <span className="material-symbols-outlined text-cyan-400 text-[14px] mt-0.5">
-                      trip_origin
-                    </span>
-                    <div className="flex flex-col">
-                      <span className="text-[9px] uppercase text-slate-400 font-mono">ORIGIN</span>
-                      <span className="text-xs font-semibold text-slate-200 leading-tight">
-                        {item.origin}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-2">
-                    <span className="material-symbols-outlined text-[#00FF66] text-[14px] mt-0.5">
-                      location_on
-                    </span>
-                    <div className="flex flex-col">
-                      <span className="text-[9px] uppercase text-slate-400 font-mono">DESTINATION</span>
-                      <span className="text-xs font-semibold text-slate-200 leading-tight">
-                        {item.destination}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Metric Strip */}
-                <div className="grid grid-cols-3 gap-2 p-2 rounded-lg bg-[#111722]/80 border border-[#3c494d]/30 text-[9px] font-mono mb-3">
-                  <div>
-                    <span className="text-slate-500 block">STORM SURGE</span>
-                    <span className="text-amber-400 font-bold">{item.stormIntensity} mm/h</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500 block">HAZARDS</span>
-                    <span className="text-[#00FF66] font-bold">{item.hazardsBypassed} BYPASSED</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500 block">EST. DURATION</span>
-                    <span className="text-cyan-300 font-bold">{item.estTime}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Strip */}
-              <div className="flex items-center justify-between pt-2 border-t border-[#3c494d]/30 text-[9px] font-mono text-slate-400">
-                <span>SECTOR: {item.routeSector}</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const grid = document.getElementById('query-grid');
-                    if (grid) grid.scrollIntoView({ behavior: 'smooth' });
-                  }}
-                  className="px-2 py-0.5 rounded bg-cyan-950/60 hover:bg-cyan-900 text-cyan-300 border border-cyan-500/30 transition-colors flex items-center gap-1 cursor-pointer font-semibold"
-                >
-                  <span>REPLAY VECTOR</span>
-                  <span className="material-symbols-outlined text-[11px]">redo</span>
-                </button>
-              </div>
+        {/* 2. Grid Matrix or Empty State */}
+        {isLoading ? (
+          <div className="py-12 flex flex-col items-center justify-center text-center font-mono">
+            <div className="w-8 h-8 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin mb-3" />
+            <span className="text-xs text-slate-400 tracking-wider">RETRIEVING OPERATOR TELEMETRY ARCHIVE...</span>
+          </div>
+        ) : filteredHistory.length === 0 ? (
+          <div className="py-16 px-6 rounded-2xl bg-[#0b0f17]/60 border border-slate-800 flex flex-col items-center justify-center text-center max-w-xl mx-auto shadow-inner">
+            <div className="w-14 h-14 rounded-2xl bg-cyan-950/40 border border-cyan-500/30 flex items-center justify-center text-cyan-400 mb-4 shadow-[0_0_20px_rgba(0,217,255,0.15)]">
+              <span className="material-symbols-outlined text-2xl">history_toggle_off</span>
             </div>
-          ))}
-        </div>
+            <h3 className="text-base font-bold font-mono tracking-wide text-slate-200 mb-1">
+              NO DISPATCH LOGS ARCHIVED YET
+            </h3>
+            <p className="text-xs text-slate-400 font-mono leading-relaxed max-w-md mb-6">
+              Configure your origin and destination in the Command Deck above and calculate safe routes. All simulated emergency dispatches will automatically be logged and archived here for your account.
+            </p>
+            <button
+              onClick={() => {
+                const grid = document.getElementById('query-grid');
+                if (grid) grid.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className="px-5 py-2 rounded-xl bg-cyan-400/20 hover:bg-cyan-400/30 border border-cyan-400/40 text-cyan-300 font-mono text-xs font-semibold tracking-wider transition-all cursor-pointer flex items-center gap-2"
+            >
+              <span className="material-symbols-outlined text-[16px]">navigation</span>
+              <span>CALCULATE ROUTE IN COMMAND DECK</span>
+            </button>
+          </div>
+        ) : (
+          <div ref={cardsRef} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredHistory.map((item) => (
+              <div
+                key={item.id}
+                className="relative bg-[#0b0f17]/90 backdrop-blur-xl rounded-xl border border-cyan-500/20 p-4 shadow-[0_4px_24px_rgba(0,0,0,0.5)] flex flex-col justify-between hover:border-cyan-400/50 transition-all group"
+              >
+                {/* Corner Accents */}
+                <div className="pointer-events-none absolute top-0 left-0 w-2.5 h-2.5 border-t border-l border-[#00d9ff]/60" />
+                <div className="pointer-events-none absolute top-0 right-0 w-2.5 h-2.5 border-t border-r border-[#00d9ff]/60" />
+
+                <div>
+                  {/* Log Header */}
+                  <div className="flex items-center justify-between border-b border-[#3c494d]/30 pb-2 mb-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs font-bold text-cyan-300 tracking-wider">
+                        {item.id}
+                      </span>
+                      <span className="text-[9px] text-slate-500 font-mono">
+                        {item.timestamp}
+                      </span>
+                    </div>
+                    <span
+                      className={`px-2 py-0.5 rounded text-[8px] font-mono font-bold tracking-wider ${
+                        item.status === 'REROUTED'
+                          ? 'bg-amber-950/70 text-amber-300 border border-amber-500/40'
+                          : item.status === 'COMPLETED'
+                          ? 'bg-emerald-950/70 text-emerald-300 border border-emerald-500/40'
+                          : 'bg-cyan-950/70 text-cyan-300 border border-cyan-500/40'
+                      }`}
+                    >
+                      {item.status}
+                    </span>
+                  </div>
+
+                  {/* Route Vector Details */}
+                  <div className="space-y-2 mb-3">
+                    <div className="flex items-start gap-2">
+                      <span className="material-symbols-outlined text-cyan-400 text-[14px] mt-0.5">
+                        trip_origin
+                      </span>
+                      <div className="flex flex-col">
+                        <span className="text-[9px] uppercase text-slate-400 font-mono">ORIGIN</span>
+                        <span className="text-xs font-semibold text-slate-200 leading-tight">
+                          {item.origin}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-2">
+                      <span className="material-symbols-outlined text-[#00FF66] text-[14px] mt-0.5">
+                        location_on
+                      </span>
+                      <div className="flex flex-col">
+                        <span className="text-[9px] uppercase text-slate-400 font-mono">DESTINATION</span>
+                        <span className="text-xs font-semibold text-slate-200 leading-tight">
+                          {item.destination}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Metric Strip */}
+                  <div className="grid grid-cols-3 gap-2 p-2 rounded-lg bg-[#111722]/80 border border-[#3c494d]/30 text-[9px] font-mono mb-3">
+                    <div>
+                      <span className="text-slate-500 block">STORM SURGE</span>
+                      <span className="text-amber-400 font-bold">{item.stormIntensity} mm/h</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">HAZARDS</span>
+                      <span className="text-[#00FF66] font-bold">{item.hazardsBypassed} BYPASSED</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">EST. DURATION</span>
+                      <span className="text-cyan-300 font-bold">{item.estTime}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action Strip */}
+                <div className="flex items-center justify-between pt-2 border-t border-[#3c494d]/30 text-[9px] font-mono text-slate-400">
+                  <span className="truncate pr-2">SECTOR: {item.routeSector}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onReplayVector) {
+                        onReplayVector(item);
+                      } else {
+                        const grid = document.getElementById('query-grid');
+                        if (grid) grid.scrollIntoView({ behavior: 'smooth' });
+                      }
+                    }}
+                    className="px-2 py-0.5 rounded bg-cyan-950/60 hover:bg-cyan-900 text-cyan-300 border border-cyan-500/30 transition-colors flex items-center gap-1 cursor-pointer font-semibold shrink-0"
+                  >
+                    <span>REPLAY</span>
+                    <span className="material-symbols-outlined text-[11px]">redo</span>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { Navbar } from './components/Navbar';
 import { FloodScrollytelling } from './components/FloodScrollytelling';
-import { Footer } from './components/Footer';
+import { AboutSection } from './components/AboutSection';
 import TacticalSimulationApp from '../HydroPulse-Map-Simulation/src/App';
 
 type RouteView = 'landing' | 'simulation';
@@ -10,6 +10,8 @@ type RouteView = 'landing' | 'simulation';
 export const App: React.FC = () => {
   const [activeView, setActiveView] = useState<RouteView>(() => {
     if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('hydropulse_token');
+      if (token) return 'simulation';
       return window.location.hash.toLowerCase().includes('simulation') ? 'simulation' : 'landing';
     }
     return 'landing';
@@ -78,9 +80,18 @@ export const App: React.FC = () => {
     }, 650);
   }, [activeView, isTransitioning, BOOT_MESSAGES.length]);
 
-  // URL Hash Synchronizer
+  // URL Hash Synchronizer: When logged in, strictly enforce simulation view
   useEffect(() => {
     const handleHashChange = () => {
+      const token = localStorage.getItem('hydropulse_token');
+      if (token) {
+        if (activeView !== 'simulation') {
+          setActiveView('simulation');
+          window.location.hash = '#/simulation';
+        }
+        return;
+      }
+
       const hash = window.location.hash.toLowerCase();
       const target: RouteView = hash.includes('simulation') ? 'simulation' : 'landing';
       if (target !== activeView && !isTransitioning) {
@@ -173,7 +184,7 @@ export const App: React.FC = () => {
           <main>
             <FloodScrollytelling onLaunchSimulation={() => navigateTo('simulation')} />
           </main>
-          <Footer />
+          <AboutSection onLaunchSimulation={() => navigateTo('simulation')} />
         </div>
       ) : (
         <div className="simulation-view-container animate-in fade-in duration-300">

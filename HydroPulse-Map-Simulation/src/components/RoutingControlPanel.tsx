@@ -116,12 +116,6 @@ export const RoutingControlPanel = memo(function RoutingControlPanel({
           <h2 className="text-sm font-semibold text-slate-100 font-['Space_Grotesk']">
             Route Configuration
           </h2>
-          <div className="flex items-center gap-1.5 text-[10px] font-mono">
-            <span className={`w-1.5 h-1.5 rounded-full ${modelUsed ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-            <span className={modelUsed ? 'text-emerald-400' : 'text-amber-400'}>
-              {modelUsed ? 'ST-GNN Active' : 'OSRM Fallback'}
-            </span>
-          </div>
         </div>
 
         {/* ──────── ROUTE PRESETS ──────── */}
@@ -155,7 +149,6 @@ export const RoutingControlPanel = memo(function RoutingControlPanel({
                 <span className="w-2 h-2 rounded-full bg-blue-400" />
                 Origin
               </span>
-              <span className="font-mono text-slate-500 text-[10px]">{originLoc.elevationM}m AMSL</span>
             </div>
             <div className="relative flex items-center">
               <span className="material-symbols-outlined absolute left-2.5 text-slate-500 text-[16px] pointer-events-none">
@@ -197,7 +190,6 @@ export const RoutingControlPanel = memo(function RoutingControlPanel({
                 <span className="w-2 h-2 rounded-full bg-emerald-400" />
                 Destination
               </span>
-              <span className="font-mono text-slate-500 text-[10px]">{destLoc.elevationM}m AMSL</span>
             </div>
             <div className="relative flex items-center">
               <span className="material-symbols-outlined absolute left-2.5 text-slate-500 text-[16px] pointer-events-none">
@@ -303,6 +295,59 @@ export const RoutingControlPanel = memo(function RoutingControlPanel({
           )}
         </div>
 
+        {/* ──────── ROUTE RESULTS (Below Weather Controls) ──────── */}
+        {activeRoute && (
+          <div className="p-3 bg-slate-800/30 rounded-lg border border-slate-700/40 text-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1.5 text-slate-200 font-medium">
+                <span className="material-symbols-outlined text-[14px] text-slate-400">alt_route</span>
+                Computed Route
+              </span>
+              <span className="text-emerald-400 font-medium text-[11px]">
+                {activeRoute.safeRoute.passability}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px] border-t border-slate-700/30 pt-2">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Distance</span>
+                <span className="text-slate-300 font-medium">{activeRoute.safeRoute.distanceKm} km</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Est. Time</span>
+                <span className="text-slate-300 font-medium">{activeRoute.safeRoute.durationMin} min</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Elevation</span>
+                <span className="text-slate-300 font-medium">+{activeRoute.safeRoute.elevationGainM}m</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Hazards Bypassed</span>
+                <span className="text-slate-300 font-medium">{activeRoute.safeRoute.hazardsBypassedCount}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ──────── CALCULATE BUTTON ──────── */}
+        <button
+          onClick={handleCalculateClick}
+          disabled={isCalculating}
+          type="button"
+          className="w-full py-2.5 px-4 bg-white hover:bg-slate-100 text-slate-900 font-semibold text-xs tracking-wide rounded-lg flex items-center justify-center gap-2 transition-colors active:scale-[0.98] disabled:opacity-60 cursor-pointer shadow-sm"
+        >
+          {isCalculating ? (
+            <>
+              <span className="material-symbols-outlined text-[16px] animate-spin">refresh</span>
+              <span>Computing route…</span>
+            </>
+          ) : (
+            <>
+              <span className="material-symbols-outlined text-[16px]">navigation</span>
+              <span>{routeActive ? 'Recalculate Route' : 'Calculate Safe Route'}</span>
+            </>
+          )}
+        </button>
+
         {/* ──────── FLASH FLOOD INJECTION ──────── */}
         <div className="p-3 bg-slate-800/30 rounded-lg border border-slate-700/40 space-y-2.5">
           <div className="flex items-center justify-between">
@@ -380,59 +425,6 @@ export const RoutingControlPanel = memo(function RoutingControlPanel({
           </div>
         </div>
 
-        {/* ──────── ROUTE RESULTS ──────── */}
-        {activeRoute && (
-          <div className="p-3 bg-slate-800/30 rounded-lg border border-slate-700/40 text-xs space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-slate-200 font-medium">
-                <span className="material-symbols-outlined text-[14px] text-slate-400">alt_route</span>
-                Computed Route
-              </span>
-              <span className="text-emerald-400 font-medium text-[11px]">
-                {activeRoute.safeRoute.passability}
-              </span>
-            </div>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px] border-t border-slate-700/30 pt-2">
-              <div className="flex justify-between">
-                <span className="text-slate-500">Distance</span>
-                <span className="text-slate-300 font-medium">{activeRoute.safeRoute.distanceKm} km</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Est. Time</span>
-                <span className="text-slate-300 font-medium">{activeRoute.safeRoute.durationMin} min</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Elevation</span>
-                <span className="text-slate-300 font-medium">+{activeRoute.safeRoute.elevationGainM}m</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Hazards Bypassed</span>
-                <span className="text-slate-300 font-medium">{activeRoute.safeRoute.hazardsBypassedCount}</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ──────── CALCULATE BUTTON ──────── */}
-        <button
-          onClick={handleCalculateClick}
-          disabled={isCalculating}
-          type="button"
-          className="w-full py-2.5 px-4 bg-white hover:bg-slate-100 text-slate-900 font-semibold text-xs tracking-wide rounded-lg flex items-center justify-center gap-2 transition-colors active:scale-[0.98] disabled:opacity-60 cursor-pointer"
-        >
-          {isCalculating ? (
-            <>
-              <span className="material-symbols-outlined text-[16px] animate-spin">refresh</span>
-              <span>Computing route…</span>
-            </>
-          ) : (
-            <>
-              <span className="material-symbols-outlined text-[16px]">navigation</span>
-              <span>{routeActive ? 'Recalculate Route' : 'Calculate Safe Route'}</span>
-            </>
-          )}
-        </button>
-
         {/* ──────── ALGORITHM LOG ──────── */}
         <div className="p-3 bg-slate-900/60 rounded-lg border border-slate-800/60 space-y-2">
           <button
@@ -467,15 +459,6 @@ export const RoutingControlPanel = memo(function RoutingControlPanel({
               ))}
             </div>
           )}
-        </div>
-
-        {/* ──────── BOTTOM STATUS ──────── */}
-        <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1">
-          <div className="flex items-center gap-1.5">
-            <span className={`w-1.5 h-1.5 rounded-full ${modelUsed ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-            <span>{modelUsed ? 'ST-GNN Model Active' : 'ST-GNN Offline → OSRM Fallback'}</span>
-          </div>
-          <span>OSRM Road Routing</span>
         </div>
       </div>
     </div>

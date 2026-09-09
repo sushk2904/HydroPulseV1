@@ -93,6 +93,7 @@ export default {
         "space-4xl": "96px",
       },
       fontFamily: {
+        faculty: ['"Faculty Glyphic"', 'sans-serif'],
         clash: ['"Clash Grotesk"', 'sans-serif'],
         "telemetry-mono-lg": ['Lexend', 'sans-serif'],
         "display-hero": ['"Space Grotesk"', 'sans-serif'],

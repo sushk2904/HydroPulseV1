@@ -8,9 +8,19 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 import torch
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, field_validator
+
+from server.auth import (
+    create_user,
+    authenticate_user,
+    get_user_from_token,
+    update_user_profile,
+    change_user_password,
+    record_dispatch_log,
+    get_user_dispatch_logs,
+)
 
 from server.model import load_trained_model, STGAT_GRU
 
@@ -336,6 +346,257 @@ def _fallback_prediction(storm_intensity: float) -> Dict[str, Any]:
         "catchment_matrix": _compute_catchment_matrix(storm_intensity, storm_intensity * 0.038),
     }
 
+# ─── Authentication Endpoints ──────────────────────────────────────
+
+class SignupRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+
+    @field_validator("name")
+    @classmethod
+    def name_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Name is required")
+        return v.strip()
+
+    @field_validator("email")
+    @classmethod
+    def email_valid(cls, v: str) -> str:
+        v = v.strip().lower()
+        if "@" not in v or "." not in v.split("@")[-1]:
+            raise ValueError("Invalid email address")
+        return v
+
+    @field_validator("password")
+    @classmethod
+    def password_strong(cls, v: str) -> str:
+        if len(v) < 6:
+            raise ValueError("Password must be at least 6 characters")
+        return v
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class UpdateProfileRequest(BaseModel):
+    name: str
+
+    @field_validator("name")
+    @classmethod
+    def name_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Name cannot be empty")
+        return v.strip()
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def new_password_valid(cls, v: str) -> str:
+        if len(v) < 6:
+            raise ValueError("New password must be at least 6 characters")
+        return v
+
+
+@app.post("/api/auth/signup")
+def signup(req: SignupRequest):
+    try:
+        result = create_user(name=req.name, email=req.email, password=req.password)
+        return {
+            "status": "success",
+            "message": "Account created successfully",
+            "user": {
+                "id": result["id"],
+                "name": result["name"],
+                "email": result["email"],
+                "created_at": result["created_at"],
+            },
+            "token": result["token"],
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.post("/api/auth/login")
+def login(req: LoginRequest):
+    try:
+        result = authenticate_user(email=req.email, password=req.password)
+        return {
+            "status": "success",
+            "message": "Login successful",
+            "user": {
+                "id": result["id"],
+                "name": result["name"],
+                "email": result["email"],
+                "created_at": result["created_at"],
+            },
+            "token": result["token"],
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/api/auth/me")
+def get_current_user(authorization: str = Header(default="")):
+    token = ""
+    if authorization.startswith("Bearer "):
+        token = authorization[7:]
+    
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    user = get_user_from_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    return {
+        "status": "success",
+        "user": user,
+    }
+
+
+@app.put("/api/auth/profile")
+def update_profile(req: UpdateProfileRequest, authorization: str = Header(default="")):
+    token = ""
+    if authorization.startswith("Bearer "):
+        token = authorization[7:]
+    
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    user = get_user_from_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    try:
+        updated_user = update_user_profile(user_id=user["id"], name=req.name)
+        return {
+            "status": "success",
+            "message": "Profile updated successfully",
+            "user": updated_user,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.post("/api/auth/change-password")
+def change_password(req: ChangePasswordRequest, authorization: str = Header(default="")):
+    token = ""
+    if authorization.startswith("Bearer "):
+        token = authorization[7:]
+    
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    user = get_user_from_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    try:
+        change_user_password(
+            user_id=user["id"],
+            old_password=req.current_password,
+            new_password=req.new_password,
+        )
+        return {
+            "status": "success",
+            "message": "Password changed successfully",
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+class DispatchLogRequest(BaseModel):
+    origin: str
+    destination: str
+    storm_intensity: float = 75.0
+    status: str = "COMPLETED"
+    status_label: str = "OPTIMAL // 100% CLEAR"
+    hazards_bypassed: int = 0
+    est_time: str = "24 MIN"
+    elevation_clearance: str = "+6.2m AMSL"
+    route_sector: str = "MUMBAI ARTERIAL"
+
+
+@app.post("/api/routes/history")
+def add_route_history(req: DispatchLogRequest, authorization: str = Header(default="")):
+    token = ""
+    if authorization.startswith("Bearer "):
+        token = authorization[7:]
+    
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    user = get_user_from_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    try:
+        entry = record_dispatch_log(
+            user_id=user["id"],
+            origin=req.origin,
+            destination=req.destination,
+            storm_intensity=req.storm_intensity,
+            status=req.status,
+            status_label=req.status_label,
+            hazards_bypassed=req.hazards_bypassed,
+            est_time=req.est_time,
+            elevation_clearance=req.elevation_clearance,
+            route_sector=req.route_sector,
+        )
+        return {
+            "status": "success",
+            "message": "Dispatch log saved",
+            "log": entry,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/routes/history")
+def get_route_history(authorization: str = Header(default="")):
+    token = ""
+    if authorization.startswith("Bearer "):
+        token = authorization[7:]
+    
+    if not token:
+        return {
+            "status": "success",
+            "history": [],
+        }
+
+    user = get_user_from_token(token)
+    if not user:
+        return {
+            "status": "success",
+            "history": [],
+        }
+
+    try:
+        logs = get_user_dispatch_logs(user_id=user["id"])
+        return {
+            "status": "success",
+            "history": logs,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="127.0.0.1", port=8000)
+

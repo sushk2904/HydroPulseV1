@@ -4,7 +4,6 @@ import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import gsap from 'gsap';
-import { useGSAP } from '@gsap/react';
 
 // Default Mumbai Coordinate Reference System Constants
 export const MUMBAI_CENTER = {
@@ -40,12 +39,6 @@ interface HydropBoundaryData {
   raw_bounds: { minLon: number; maxLon: number; minLat: number; maxLat: number };
 }
 
-interface EarthContinentsData {
-  points: number[][];
-  lines: number[][][];
-  mumbai: [number, number, number];
-}
-
 interface ElevationData {
   grid: number[][];
   min_elev: number;
@@ -62,188 +55,7 @@ interface BuildingData {
 }
 
 /**
- * COMPONENT 1: 3D ROTATING WIRE-MESH NEON EARTH GLOBE (Stage 1 / Initial View)
- * Displays a rotating wireframe globe in glowing neon cyan (#00D9FF) and deep neon blue (#5B7FFF)
- * with glowing coordinate latitude/longitude rings, continent outlines, and a tactical target reticle on Mumbai.
- */
-const NeonWireframeGlobe = memo(function NeonWireframeGlobe({
-  globeGroupRef,
-  globeMatRef,
-  globeScaleRef,
-  earthData,
-  currentProgressRef,
-}: {
-  globeGroupRef: React.RefObject<THREE.Group | null>;
-  globeMatRef: React.RefObject<THREE.MeshBasicMaterial | null>;
-  globeScaleRef: React.RefObject<THREE.Group | null>;
-  earthData: EarthContinentsData | null;
-  currentProgressRef?: React.MutableRefObject<number>;
-}) {
-  const R = 44; // Radius of globe sphere
-
-  // Rotate globe around Y axis continuously in useFrame, smoothly decelerating as dive locks in
-  useFrame((_, delta) => {
-    if (globeGroupRef.current) {
-      const p = currentProgressRef ? currentProgressRef.current : 0;
-      const rotDamp = Math.max(0, 1 - p * 1.5);
-      globeGroupRef.current.rotation.y += delta * 0.18 * rotDamp;
-    }
-  });
-
-  // Latitude and Longitude Meridian Lines
-  const { meridianGeometries, continentGeometries } = useMemo(() => {
-    const meridians: THREE.BufferGeometry[] = [];
-
-    // Equator and tropics
-    const lats = [0, 23.5, -23.5, 45, -45, 66.5, -66.5];
-    lats.forEach((lat) => {
-      const phi = THREE.MathUtils.degToRad(90 - lat);
-      const ringPts: THREE.Vector3[] = [];
-      const r = R * Math.sin(phi);
-      const y = R * Math.cos(phi);
-      for (let i = 0; i <= 64; i++) {
-        const theta = (i / 64) * Math.PI * 2;
-        ringPts.push(new THREE.Vector3(r * Math.cos(theta), y, r * Math.sin(theta)));
-      }
-      meridians.push(new THREE.BufferGeometry().setFromPoints(ringPts));
-    });
-
-    // Longitudinal Great Circles
-    for (let j = 0; j < 12; j++) {
-      const theta = (j / 12) * Math.PI;
-      const longPts: THREE.Vector3[] = [];
-      for (let i = 0; i <= 64; i++) {
-        const phi = (i / 64) * Math.PI * 2;
-        const x = R * Math.sin(phi) * Math.cos(theta);
-        const y = R * Math.cos(phi);
-        const z = R * Math.sin(phi) * Math.sin(theta);
-        longPts.push(new THREE.Vector3(x, y, z));
-      }
-      meridians.push(new THREE.BufferGeometry().setFromPoints(longPts));
-    }
-
-    // Continents from Geo Coordinates
-    const contLines: THREE.BufferGeometry[] = [];
-    if (earthData && earthData.lines) {
-      earthData.lines.forEach((poly) => {
-        const pts = poly.map((pt) => new THREE.Vector3(pt[0] * (R + 0.3), pt[1] * (R + 0.3), pt[2] * (R + 0.3)));
-        contLines.push(new THREE.BufferGeometry().setFromPoints(pts));
-      });
-    }
-
-    return { meridianGeometries: meridians, continentGeometries: contLines };
-  }, [earthData, R]);
-
-  const mumbaiPos = useMemo(() => {
-    if (earthData?.mumbai) {
-      return [
-        earthData.mumbai[0] * (R + 0.8),
-        earthData.mumbai[1] * (R + 0.8),
-        earthData.mumbai[2] * (R + 0.8),
-      ] as [number, number, number];
-    }
-    // Default Mumbai sphere coordinates: lat 19.0760, lon 72.8777
-    const phi = THREE.MathUtils.degToRad(90 - 19.076);
-    const theta = THREE.MathUtils.degToRad(72.8777 + 180);
-    return [
-      -R * Math.sin(phi) * Math.cos(theta),
-      R * Math.cos(phi),
-      R * Math.sin(phi) * Math.sin(theta),
-    ] as [number, number, number];
-  }, [earthData, R]);
-
-  return (
-    <group ref={globeScaleRef}>
-      <group ref={globeGroupRef}>
-        {/* 1. Dark Holographic Planetary Core */}
-        <mesh>
-          <sphereGeometry args={[R - 0.5, 32, 24]} />
-          <meshBasicMaterial color="#050910" transparent opacity={0.85} />
-        </mesh>
-
-        {/* 2. Neon Cyan Wireframe Sphere Lattice */}
-        <mesh>
-          <sphereGeometry args={[R, 28, 20]} />
-          <meshBasicMaterial
-            ref={globeMatRef}
-            color="#00D9FF"
-            wireframe={true}
-            transparent={true}
-            opacity={0.55}
-          />
-        </mesh>
-
-        {/* 3. Deep Neon Blue Geodesic Icosahedron Mesh (Sci-fi augmented reality aesthetic) */}
-        <mesh>
-          <icosahedronGeometry args={[R + 0.4, 2]} />
-          <meshBasicMaterial
-            color="#5B7FFF"
-            wireframe={true}
-            transparent={true}
-            opacity={0.35}
-          />
-        </mesh>
-
-        {/* 4. Glowing Coordinate Meridians & Latitude Rings */}
-        {meridianGeometries.map((geom, idx) => (
-          <primitive
-            key={`meridian-${idx}`}
-            object={new THREE.Line(geom, new THREE.LineBasicMaterial({
-              color: idx === 0 ? '#00D9FF' : '#5B7FFF',
-              transparent: true,
-              opacity: idx === 0 ? 0.75 : 0.4,
-            }))}
-          />
-        ))}
-
-        {/* 5. Glowing Continent Outlines on Globe Surface */}
-        {continentGeometries.map((geom, idx) => (
-          <primitive
-            key={`continent-${idx}`}
-            object={new THREE.Line(geom, new THREE.LineBasicMaterial({
-              color: '#AFECFF',
-              transparent: true,
-              opacity: 0.85,
-            }))}
-          />
-        ))}
-
-        {/* 6. Tactical Target Reticle Pinpointing Mumbai */}
-        <group position={mumbaiPos}>
-          {/* Target Reticle Outer Pulsing Ring */}
-          <mesh>
-            <ringGeometry args={[1.5, 2.3, 24]} />
-            <meshBasicMaterial color="#00D9FF" transparent opacity={0.9} side={THREE.DoubleSide} />
-          </mesh>
-          {/* Inner Bullseye Point */}
-          <mesh>
-            <circleGeometry args={[0.7, 16]} />
-            <meshBasicMaterial color="#AFECFF" />
-          </mesh>
-          {/* Radial Beacon Beam Extruded Outward from Globe */}
-          <mesh position={[0, 0, 3]}>
-            <cylinderGeometry args={[0.15, 0.4, 6, 8]} />
-            <meshBasicMaterial color="#00D9FF" transparent opacity={0.7} />
-          </mesh>
-        </group>
-
-        {/* 7. Soft Outer Atmospheric Halo */}
-        <mesh>
-          <sphereGeometry args={[R + 2.0, 32, 24]} />
-          <meshBasicMaterial
-            color="#00D9FF"
-            transparent={true}
-            opacity={0.12}
-            side={THREE.BackSide}
-          />
-        </mesh>
-      </group>
-    </group>
-  );
-});
-
-/**
- * COMPONENT 2: HYDROP-DATA OFFICIAL MUMBAI BOUNDARY
+ * COMPONENT 1: HYDROP-DATA OFFICIAL MUMBAI BOUNDARY
  * Renders the exact MultiPolygon boundaries from `hydrop-data/urban-flood-data/data/boundaries/mumbai_boundary.geojson`
  * as a glowing neon cyan line perimeter and holographic containment wall.
  */
@@ -256,13 +68,12 @@ const HydropBoundary = memo(function HydropBoundary({
   boundaryMatRef: React.RefObject<THREE.LineBasicMaterial | null>;
   boundaryGroupRef: React.RefObject<THREE.Group | null>;
 }) {
-  const { lineGeometries, topRailGeometries, wallGeometries, aoiGeometries, beaconPositions } = useMemo(() => {
-    if (!boundaryData) return { lineGeometries: [], topRailGeometries: [], wallGeometries: [], aoiGeometries: [], beaconPositions: [] };
+  const { lineGeometries, topRailGeometries, wallGeometries, beaconPositions } = useMemo(() => {
+    if (!boundaryData) return { lineGeometries: [], topRailGeometries: [], wallGeometries: [], beaconPositions: [] };
 
     const lines: THREE.BufferGeometry[] = [];
     const topRails: THREE.BufferGeometry[] = [];
     const walls: THREE.BufferGeometry[] = [];
-    const aois: THREE.BufferGeometry[] = [];
     const beacons: THREE.Vector3[] = [];
 
     const wallH = 6.0; // Imposing 6-unit holographic tactical containment fence
@@ -328,7 +139,7 @@ const HydropBoundary = memo(function HydropBoundary({
   if (!boundaryData) return null;
 
   return (
-    <group ref={boundaryGroupRef} visible={false}>
+    <group ref={boundaryGroupRef} visible={true}>
       {/* 1. Ground Level Mumbai Coastline Boundary (Vibrant Luminous Neon Cyan) */}
       {lineGeometries.map((geom, idx) => (
         <primitive
@@ -351,32 +162,32 @@ const HydropBoundary = memo(function HydropBoundary({
         />
       ))}
 
-      {/* 3. Holographic Containment Forcefield Wall */}
+      {/* 3. Translucent Holographic Containment Wall Mesh */}
       {wallGeometries.map((geom, idx) => (
         <mesh key={`bound-wall-${idx}`} geometry={geom}>
           <meshBasicMaterial
             color="#00D9FF"
             transparent={true}
-            opacity={0.20}
+            opacity={0.16}
             side={THREE.DoubleSide}
             depthWrite={false}
           />
         </mesh>
       ))}
 
-      {/* 4. Perimeter Pylons / Tactical Defense Beacons */}
+      {/* 4. Tactical Perimeter Laser Pylons / Beacons along shoreline */}
       {beaconPositions.map((pos, idx) => (
         <group key={`pylon-${idx}`} position={[pos.x, pos.y, pos.z]}>
           <mesh position={[0, 4, 0]}>
-            <cylinderGeometry args={[0.2, 0.2, 8, 6]} />
-            <meshBasicMaterial color="#00D9FF" transparent opacity={0.7} />
+            <cylinderGeometry args={[0.2, 0.35, 8, 8]} />
+            <meshBasicMaterial color="#00D9FF" transparent opacity={0.8} />
           </mesh>
           <mesh position={[0, 8, 0]}>
-            <sphereGeometry args={[0.7, 8, 8]} />
+            <sphereGeometry args={[0.6, 12, 12]} />
             <meshBasicMaterial color="#AFECFF" />
           </mesh>
-          <mesh position={[0, 0.2, 0]}>
-            <ringGeometry args={[1.0, 1.8, 12]} />
+          <mesh position={[0, 8, 0]}>
+            <ringGeometry args={[0.8, 1.4, 16]} />
             <meshBasicMaterial color="#00D9FF" transparent opacity={0.6} side={THREE.DoubleSide} />
           </mesh>
         </group>
@@ -386,7 +197,7 @@ const HydropBoundary = memo(function HydropBoundary({
 });
 
 /**
- * COMPONENT 3: TACTICAL CITY GRID IN WHITE OR CYAN
+ * COMPONENT 2: TACTICAL CITY GRID IN WHITE OR CYAN
  * "The color of the grid city must be white or cyan"
  * 1. 5,500 real pipe and street network grid lines from `hydrop_grid_network.json` rendered in White & Cyan.
  * 2. 10,113 buildings with pure White rooflines and luminous Cyan facades.
@@ -448,14 +259,16 @@ const HydropCityGrid = memo(function HydropCityGrid({
       // Color scheme: White for tall landmarks, Cyan for standard urban density
       let r = 0.0, g = 0.85, b = 1.0; // Cyber Cyan (#00D9FF)
       if (bld.height > 16) {
-        r = 1.0; g = 1.0; b = 1.0; // Crisp White (#FFFFFF)
+        r = 1.0; g = 1.0; b = 1.0; // Pure White (#FFFFFF)
       } else if (bld.height > 9) {
-        r = 0.82; g = 0.96; b = 1.0; // Luminous Ice-White
-      } else if (i % 4 === 0) {
-        r = 0.20; g = 0.72; b = 0.90; // Secondary Tactical Cyan
+        r = 0.68; g = 0.92; b = 1.0; // Ice Cyan-White (#AFECFF)
       }
 
-      const addSeg = (ax: number, ay: number, az: number, bx: number, by: number, bz: number) => {
+      const addSeg = (
+        ax: number, ay: number, az: number,
+        bx: number, by: number, bz: number,
+        isRoof = false
+      ) => {
         positions[posIdx++] = ax;
         positions[posIdx++] = ay;
         positions[posIdx++] = az;
@@ -463,19 +276,24 @@ const HydropCityGrid = memo(function HydropCityGrid({
         positions[posIdx++] = by;
         positions[posIdx++] = bz;
 
-        colors[colIdx++] = r;
-        colors[colIdx++] = g;
-        colors[colIdx++] = b;
-        colors[colIdx++] = r;
-        colors[colIdx++] = g;
-        colors[colIdx++] = b;
+        // Rooflines glow brighter pure white
+        const curR = isRoof ? Math.min(1.0, r + 0.25) : r;
+        const curG = isRoof ? Math.min(1.0, g + 0.25) : g;
+        const curB = isRoof ? Math.min(1.0, b + 0.25) : b;
+
+        colors[colIdx++] = curR;
+        colors[colIdx++] = curG;
+        colors[colIdx++] = curB;
+        colors[colIdx++] = curR;
+        colors[colIdx++] = curG;
+        colors[colIdx++] = curB;
       };
 
-      // Top Roof Perimeter Edges (4)
-      addSeg(x0, y1, z0, x1, y1, z0);
-      addSeg(x1, y1, z0, x1, y1, z1);
-      addSeg(x1, y1, z1, x0, y1, z1);
-      addSeg(x0, y1, z1, x0, y1, z0);
+      // Top Roof Edges (4)
+      addSeg(x0, y1, z0, x1, y1, z0, true);
+      addSeg(x1, y1, z0, x1, y1, z1, true);
+      addSeg(x1, y1, z1, x0, y1, z1, true);
+      addSeg(x0, y1, z1, x0, y1, z0, true);
 
       // Vertical Corner Edges (4)
       addSeg(x0, y0, z0, x0, y1, z0);
@@ -518,7 +336,7 @@ const HydropCityGrid = memo(function HydropCityGrid({
   if (!buildings) return null;
 
   return (
-    <group ref={gridLinesGroupRef} visible={false}>
+    <group ref={gridLinesGroupRef} visible={true}>
       {/* 1. Black Solid Building Mesh (Blocks terrain & distant geometry behind it) */}
       <instancedMesh
         ref={gridMeshRef}
@@ -550,7 +368,24 @@ const HydropCityGrid = memo(function HydropCityGrid({
       {/* 3. Real Hydrop Drainage Network Conduits (Luminous Cyan Street Lines) */}
       {pipeGeometry && (
         <lineSegments geometry={pipeGeometry}>
-          <lineBasicMaterial color="#00D9FF" transparent opacity={0.65} />
+          <lineBasicMaterial
+            color="#00D9FF"
+            transparent={true}
+            opacity={0.72}
+            depthWrite={false}
+          />
+        </lineSegments>
+      )}
+
+      {/* 4. Strategic Secondary Grid Lines in Soft White */}
+      {pipeGeometry && (
+        <lineSegments geometry={pipeGeometry} position={[0, 0.1, 0]}>
+          <lineBasicMaterial
+            color="#FFFFFF"
+            transparent={true}
+            opacity={0.28}
+            depthWrite={false}
+          />
         </lineSegments>
       )}
     </group>
@@ -558,9 +393,9 @@ const HydropCityGrid = memo(function HydropCityGrid({
 });
 
 /**
- * COMPONENT 4: DRAINAGE SURGE NODES (Yellow by Default -> Red When Full / Surge)
- * "and of nodes is yellow. When surge comes, and node is full it shall turn red."
- * "When surge is there it shall adjust as When i connect model to it which will give data to show, it can adjust accordingly, like low rain, or heavy surge."
+ * COMPONENT 3: HYDROP DRAINAGE SURGE NODES (Yellow -> Red When Full)
+ * 2,398 real drainage storm junctions from `hydrop_grid_network.json`
+ * Yellow under normal conditions, transitioning to Glowing Neon Red (#FF2A4D) as storm surge fills them.
  */
 const HydropDrainageNodes = memo(function HydropDrainageNodes({
   nodes,
@@ -575,48 +410,39 @@ const HydropDrainageNodes = memo(function HydropDrainageNodes({
   nodesGroupRef: React.RefObject<THREE.Group | null>;
   externalSurgeFeed?: Record<string, { isFull: boolean; waterDepth?: number }>;
 }) {
-  const COLOR_YELLOW = useMemo(() => new THREE.Color('#FFD700'), []); // Baseline Yellow
-  const COLOR_AMBER  = useMemo(() => new THREE.Color('#FFA000'), []); // Warning buffer
-  const COLOR_RED    = useMemo(() => new THREE.Color('#FF2A4D'), []); // FULL / SURGE PEAK (Red)
+  const COLOR_YELLOW = useMemo(() => new THREE.Color('#FFD700'), []);
+  const COLOR_AMBER = useMemo(() => new THREE.Color('#FF8C00'), []);
+  const COLOR_RED = useMemo(() => new THREE.Color('#FF2A4D'), []);
 
   useLayoutEffect(() => {
     if (!nodesMeshRef.current || !nodes || nodes.length === 0) return;
 
     const count = nodes.length;
-    if (!nodesMeshRef.current.instanceColor) {
-      nodesMeshRef.current.instanceColor = new THREE.InstancedBufferAttribute(
-        new Float32Array(count * 3),
-        3
-      );
-    }
-
     const dummy = new THREE.Object3D();
 
     for (let i = 0; i < count; i++) {
-      const n = nodes[i];
-      const threshold = n.flood_threshold;
-
-      // Check whether node is full based on:
-      // 1. External Model Feed (if user connected model)
-      // 2. Storm Intensity rainfall (low rain vs heavy surge)
+      const node = nodes[i];
       let isFull = false;
       let isWarning = false;
 
-      if (externalSurgeFeed && externalSurgeFeed[n.id]) {
-        isFull = externalSurgeFeed[n.id].isFull;
+      // Real model feed override from FastAPI / ML inference
+      if (externalSurgeFeed && externalSurgeFeed[node.id]) {
+        isFull = externalSurgeFeed[node.id].isFull;
       } else {
-        isFull = stormIntensity >= threshold;
-        isWarning = !isFull && stormIntensity >= threshold - 15;
+        // High-precision threshold check against rain intensity
+        if (stormIntensity >= node.flood_threshold) {
+          isFull = true;
+        } else if (stormIntensity >= node.flood_threshold * 0.75) {
+          isWarning = true;
+        }
       }
 
-      // Position node cleanly on CartoDEM terrain elevation
-      const nodeY = (n.ground_y || 0) + 0.85;
-      dummy.position.set(n.x, nodeY, n.z);
+      // Elevation position
+      dummy.position.set(node.x, (node.ground_y || 0) + 1.2, node.z);
 
-      // Expanding scale for full/overflowing nodes
-      const nodeScale = isFull ? 1.5 : isWarning ? 1.15 : 0.9;
-      dummy.scale.set(nodeScale, nodeScale, nodeScale);
-      dummy.rotation.set(0, 0, 0);
+      // Slightly enlarge overflowing/hazardous nodes for instant tactical recognition
+      const s = isFull ? 1.4 : isWarning ? 1.15 : 0.85;
+      dummy.scale.set(s, s, s);
       dummy.updateMatrix();
 
       nodesMeshRef.current.setMatrixAt(i, dummy.matrix);
@@ -640,7 +466,7 @@ const HydropDrainageNodes = memo(function HydropDrainageNodes({
   if (!nodes) return null;
 
   return (
-    <group ref={nodesGroupRef} visible={false}>
+    <group ref={nodesGroupRef} visible={true}>
       <instancedMesh
         ref={nodesMeshRef}
         args={[undefined, undefined, nodes.length]}
@@ -653,26 +479,22 @@ const HydropDrainageNodes = memo(function HydropDrainageNodes({
 });
 
 /**
- * COMPONENT 5: SAFE EVACUATION ROUTE VECTOR (VIBRANT GLOWING GREEN LINE)
+ * COMPONENT 4: SAFE EVACUATION ROUTE VECTOR (VIBRANT GLOWING GREEN LINE)
  * Dynamically projects real Mumbai topological road corridors computed by ST-GNN AI model.
  */
 const HolographicRouteVector = memo(function HolographicRouteVector({
   routeGroupRef,
-  hasDived,
   activeRoute,
+  routeActive,
 }: {
   routeGroupRef: React.RefObject<THREE.Group | null>;
-  hasDived: boolean;
   activeRoute?: any;
+  routeActive?: boolean;
 }) {
-  // Never render route before dive completes to avoid any space artifacts
-  if (!hasDived) return null;
-
   // Real Mumbai flood-aware safe route projected from model coordinates
   const { waypoints, blockedWaypoints, originPos, destPos, hazardPos } = useMemo(() => {
     if (activeRoute?.safeRoute?.coordinates && activeRoute.safeRoute.coordinates.length > 1) {
       const coords: [number, number][] = activeRoute.safeRoute.coordinates;
-      // Subsample coordinates if too dense for smooth 3D Spline
       const step = Math.max(1, Math.floor(coords.length / 32));
       const pts: THREE.Vector3[] = [];
       for (let i = 0; i < coords.length; i += step) {
@@ -680,18 +502,15 @@ const HolographicRouteVector = memo(function HolographicRouteVector({
         const [x, z] = projectCoords(lng, lat);
         pts.push(new THREE.Vector3(x, 4.2, z));
       }
-      // Always include final point
       const [lastLat, lastLng] = coords[coords.length - 1];
       const [lastX, lastZ] = projectCoords(lastLng, lastLat);
       pts.push(new THREE.Vector3(lastX, 4.2, lastZ));
 
-      // Origin & Destination 3D Positions
       const [origLat, origLng] = [activeRoute.origin.lat, activeRoute.origin.lng];
       const [origX, origZ] = projectCoords(origLng, origLat);
       const [destLat, destLng] = [activeRoute.destination.lat, activeRoute.destination.lng];
       const [dX, dZ] = projectCoords(destLng, destLat);
 
-      // Blocked hazard path
       const blockedPts: THREE.Vector3[] = [];
       if (activeRoute.hazardRoute?.coordinates && activeRoute.hazardRoute.coordinates.length > 1) {
         const hCoords = activeRoute.hazardRoute.coordinates;
@@ -755,41 +574,29 @@ const HolographicRouteVector = memo(function HolographicRouteVector({
   }, [waypoints, blockedWaypoints]);
 
   return (
-    <group ref={routeGroupRef} visible={false}>
+    <group ref={routeGroupRef} visible={Boolean(routeActive)}>
       {/* 1. Safe Flood-Aware Path: Core VIBRANT GLOWING NEON GREEN TUBE (#00FF66) */}
       {greenTubeGeom && (
         <mesh geometry={greenTubeGeom}>
-          <meshBasicMaterial color="#00FF66" />
+          <meshBasicMaterial color="#00FF66" transparent opacity={0.96} depthTest={false} depthWrite={false} />
         </mesh>
       )}
 
-      {/* Outer Glowing Neon Green Halo Ribbon */}
+      {/* 2. Safe Flood-Aware Path: Outer Glowing Neon Halo */}
       {greenHaloGeom && (
         <mesh geometry={greenHaloGeom}>
-          <meshBasicMaterial color="#00FF66" transparent opacity={0.35} depthWrite={false} />
+          <meshBasicMaterial color="#00FF66" transparent opacity={0.28} depthTest={false} depthWrite={false} side={THREE.DoubleSide} />
         </mesh>
       )}
 
-      {/* 2. Blocked Euclidean Shortest Path (Red Impassable Tube Segment) */}
+      {/* 3. Blocked Corridors Inundated by Flood Surge (Flashing Crimson Red) */}
       {blockedTubeGeom && (
         <mesh geometry={blockedTubeGeom}>
-          <meshBasicMaterial color="#FF2A4D" transparent opacity={0.85} />
+          <meshBasicMaterial color="#FF2A4D" transparent opacity={0.78} depthTest={false} depthWrite={false} />
         </mesh>
       )}
 
-      {/* Impassable Surge Hazard Marker on Blocked Route */}
-      <group position={[hazardPos.x, hazardPos.y, hazardPos.z]}>
-        <mesh position={[0, 0.4, 0]}>
-          <ringGeometry args={[1.5, 2.5, 16]} />
-          <meshBasicMaterial color="#FF2A4D" transparent opacity={0.9} side={THREE.DoubleSide} />
-        </mesh>
-        <mesh position={[0, 3.5, 0]}>
-          <cylinderGeometry args={[0.3, 0.3, 6.0, 6]} />
-          <meshBasicMaterial color="#FF2A4D" transparent opacity={0.85} />
-        </mesh>
-      </group>
-
-      {/* Origin Pin [A] (Glowing Cyan Beacon & Reticle) */}
+      {/* Origin Pin [A] (Glowing Neon Cyan Reticle & Beacon) */}
       <group position={[originPos.x, originPos.y, originPos.z]}>
         <mesh position={[0, 7.0, 0]}>
           <cylinderGeometry args={[0.3, 0.3, 14, 8]} />
@@ -825,109 +632,40 @@ const HolographicRouteVector = memo(function HolographicRouteVector({
 });
 
 /**
- * COMPONENT 6: ISRO CARTODEM TERRAIN RELIEF & OCEAN PLANE
+ * COMPONENT 5: MASTER CAMERA CONTROLLER & TELEMETRY SYNC
  */
-const CartoDemTerrainMesh = memo(function CartoDemTerrainMesh({
-  terrainGroupRef,
-}: {
-  elevationData?: ElevationData | null;
-  terrainGroupRef: React.RefObject<THREE.Group | null>;
-}) {
-  return <group ref={terrainGroupRef} visible={false} />;
-});
-
-/**
- * COMPONENT 7: MASTER CHOREOGRAPHER & CAMERA DIVE (GSAP 60 FPS)
- * Smoothly & clearly choreographs:
- *  - 0.00 to 0.22: Rotating wire-mesh Earth in orbit -> Mumbai target reticle locked
- *  - 0.22 to 0.68: Continuous orbital swoop & descent:
- *      * Globe gently expands (1.0 -> 1.7x) and dissolves into translucent mist (1.0 -> 0.0 opacity across all materials)
- *      * City boundary, black buildings with white/cyan wireframe borders, and yellow nodes materialize holographically (opacity 0 -> 1)
- *      * Buildings smoothly project vertically from the ground plane to full height (scale.y 0.001 -> 1.0)
- *  - 0.68 to 0.70: Camera gently settles into the tactical isometric hero angle (135, 145, 135)
- *  - 0.70 to 1.00: Flood surge activation (yellow nodes fill and turn red based on rain)
- */
-function MasterChoreographer({
-  globeGroupRef,
-  globeScaleRef,
-  globeMatRef,
-  boundaryGroupRef,
-  gridLinesGroupRef,
-  nodesGroupRef,
-  terrainGroupRef,
-  routeGroupRef,
+function MasterCameraController({
   routeActive,
   activeRoute,
   controlsRef,
-  targetProgressRef,
-  currentProgressRef,
-  isAutoPlayingRef,
   onTelemetryUpdate,
-  hasDived,
   onDiveComplete,
-  isInView = true,
+  isLoading,
 }: {
-  globeGroupRef: React.RefObject<THREE.Group | null>;
-  globeScaleRef: React.RefObject<THREE.Group | null>;
-  globeMatRef: React.RefObject<THREE.MeshBasicMaterial | null>;
-  boundaryGroupRef: React.RefObject<THREE.Group | null>;
-  gridLinesGroupRef: React.RefObject<THREE.Group | null>;
-  nodesGroupRef: React.RefObject<THREE.Group | null>;
-  terrainGroupRef: React.RefObject<THREE.Group | null>;
-  routeGroupRef: React.RefObject<THREE.Group | null>;
   routeActive: boolean;
   activeRoute?: any;
   controlsRef: React.RefObject<OrbitControlsImpl>;
-  targetProgressRef: React.MutableRefObject<number>;
-  currentProgressRef: React.MutableRefObject<number>;
-  isAutoPlayingRef: React.MutableRefObject<boolean>;
   onTelemetryUpdate?: (progress: number) => void;
-  hasDived: boolean;
   onDiveComplete?: () => void;
-  isInView?: boolean;
+  isLoading: boolean;
 }) {
   const { camera } = useThree();
-  const tlRef = useRef<gsap.core.Timeline | null>(null);
 
-  // Automatic cinematic dive from rotating Earth to Mumbai City Grid
+  // Notify telemetry and complete dive state as soon as assets are ready
   useEffect(() => {
-    if (hasDived || !isInView) return;
-
-    // Show rotating Earth wire mesh for 2.2s after scrolling into view, then begin smooth, majestic plunge into Mumbai
-    const timer = setTimeout(() => {
-      const diveObj = { val: targetProgressRef.current };
-      gsap.to(diveObj, {
-        val: 0.70,
-        duration: 3.5,
-        ease: 'power2.inOut',
-        onUpdate: () => {
-          targetProgressRef.current = diveObj.val;
-        },
-        onComplete: () => {
-          targetProgressRef.current = 0.70;
-          currentProgressRef.current = 0.70;
-          if (controlsRef.current) {
-            controlsRef.current.target.set(0, 0, 0);
-            controlsRef.current.update();
-          }
-          if (onDiveComplete) {
-            onDiveComplete();
-          }
-        },
-      });
-    }, 2200);
-
-    return () => clearTimeout(timer);
-  }, [hasDived, isInView, onDiveComplete, targetProgressRef, currentProgressRef, controlsRef]);
-
-  // Immediate toggle response and automatic camera refocus when user calculates a route
-  useEffect(() => {
-    if (routeGroupRef.current) {
-      routeGroupRef.current.visible = routeActive && hasDived && currentProgressRef.current >= 0.28;
+    if (!isLoading) {
+      if (onTelemetryUpdate) {
+        onTelemetryUpdate(1.0);
+      }
+      if (onDiveComplete) {
+        onDiveComplete();
+      }
     }
+  }, [isLoading, onTelemetryUpdate, onDiveComplete]);
 
-    // Automatically transition 3D camera to frame where the route pops up
-    if (routeActive && hasDived) {
+  // Smooth camera refocus when user calculates or alters dynamic route
+  useEffect(() => {
+    if (routeActive && !isLoading) {
       const startPos = camera.position.clone();
       let endTarget = new THREE.Vector3(-22, 4, 24);
       let targetPos = new THREE.Vector3(-24, 75, 86);
@@ -959,182 +697,15 @@ function MasterChoreographer({
         },
       });
     }
-  }, [routeActive, activeRoute, hasDived, routeGroupRef, currentProgressRef, camera, controlsRef]);
-
-  const applyChoreography = useCallback(
-    (p: number) => {
-      if (tlRef.current) {
-        tlRef.current.progress(p);
-      }
-      camera.lookAt(0, 0, 0);
-
-      // 1. Smooth Globe Dissolve (Full hierarchy opacity fade out from p=0.18 to p=0.45)
-      if (globeScaleRef.current) {
-        globeScaleRef.current.visible = p < 0.45;
-      }
-      if (globeGroupRef.current && p < 0.45) {
-        const globeFade = Math.max(0, Math.min(1, (0.45 - p) / 0.27));
-        globeGroupRef.current.traverse((child) => {
-          const mat = (child as any).material;
-          if (mat) {
-            if (mat.userData.baseOpacity === undefined) {
-              mat.userData.baseOpacity = mat.opacity !== undefined ? mat.opacity : 1.0;
-            }
-            mat.opacity = mat.userData.baseOpacity * globeFade;
-            mat.transparent = true;
-          }
-        });
-      }
-
-      // 2. Smooth City Holographic Materialization & Vertical Projection (p=0.20 to p=0.68)
-      const isCityVisible = p >= 0.20;
-      if (boundaryGroupRef.current) {
-        boundaryGroupRef.current.visible = isCityVisible;
-      }
-      if (gridLinesGroupRef.current) {
-        gridLinesGroupRef.current.visible = isCityVisible;
-      }
-      if (nodesGroupRef.current) {
-        nodesGroupRef.current.visible = isCityVisible;
-      }
-
-      if (isCityVisible) {
-        const cityFactor = Math.max(0, Math.min(1, (p - 0.20) / 0.48));
-        const smoothFade = THREE.MathUtils.smoothstep(cityFactor, 0, 1);
-
-        if (boundaryGroupRef.current) {
-          boundaryGroupRef.current.traverse((child) => {
-            const mat = (child as any).material;
-            if (mat) {
-              if (mat.userData.baseOpacity === undefined) {
-                mat.userData.baseOpacity = mat.opacity !== undefined ? mat.opacity : 1.0;
-              }
-              mat.opacity = mat.userData.baseOpacity * smoothFade;
-              mat.transparent = true;
-            }
-          });
-        }
-
-        if (gridLinesGroupRef.current) {
-          gridLinesGroupRef.current.scale.set(1, Math.max(0.001, smoothFade), 1);
-          gridLinesGroupRef.current.traverse((child) => {
-            const mat = (child as any).material;
-            if (mat && mat.type !== 'MeshBasicMaterial') {
-              if (mat.userData.baseOpacity === undefined) {
-                mat.userData.baseOpacity = mat.opacity !== undefined ? mat.opacity : 1.0;
-              }
-              mat.opacity = mat.userData.baseOpacity * smoothFade;
-              mat.transparent = true;
-            }
-          });
-        }
-
-        if (nodesGroupRef.current) {
-          nodesGroupRef.current.scale.set(smoothFade, smoothFade, smoothFade);
-        }
-      }
-
-      if (terrainGroupRef.current) {
-        terrainGroupRef.current.visible = false;
-      }
-
-      if (routeGroupRef.current) {
-        routeGroupRef.current.visible = routeActive && hasDived && p >= 0.28;
-      }
-
-      if (onTelemetryUpdate) {
-        onTelemetryUpdate(p);
-      }
-    },
-    [camera, routeActive, hasDived, onTelemetryUpdate]
-  );
-
-  useGSAP(
-    () => {
-      // 1. Orbital View of Rotating Globe (Stage 1)
-      const pos0 = { x: 0, y: 38, z: 132 };
-      // 2. Midpoint of continuous orbital swoop (Stage 2)
-      const pos1 = { x: 68, y: 92, z: 138 };
-      // 3. Full City Grid Tactical Hero Angle (Stage 3)
-      const pos2 = { x: 135, y: 145, z: 135 };
-      // 4. Surge and Routing View (Stage 4)
-      const pos3 = { x: 118, y: 118, z: 118 };
-
-      camera.position.set(pos0.x, pos0.y, pos0.z);
-      camera.lookAt(0, 0, 0);
-
-      const tl = gsap.timeline({
-        paused: true,
-        onUpdate: () => {
-          camera.lookAt(0, 0, 0);
-        },
-      });
-
-      // Camera Continuous Sweeping Flight Arc (.to chaining prevents GSAP immediateRender conflicts)
-      tl.to(
-        camera.position,
-        { x: pos1.x, y: pos1.y, z: pos1.z, ease: 'power1.in', duration: 0.35 },
-        0.0
-      );
-      tl.to(
-        camera.position,
-        { x: pos2.x, y: pos2.y, z: pos2.z, ease: 'power1.out', duration: 0.35 },
-        0.35
-      );
-      tl.to(
-        camera.position,
-        { x: pos3.x, y: pos3.y, z: pos3.z, ease: 'power1.inOut', duration: 0.30 },
-        0.70
-      );
-
-      // Globe Gentle Expansion (scale 1.0 to 1.7x as camera plunges into Mumbai, avoids lens clipping)
-      if (globeScaleRef.current) {
-        globeScaleRef.current.scale.set(1, 1, 1);
-        tl.to(
-          globeScaleRef.current.scale,
-          { x: 1.7, y: 1.7, z: 1.7, ease: 'power1.in', duration: 0.40 },
-          0.0
-        );
-      }
-
-      tlRef.current = tl;
-      // Initialize immediately on mount to ensure Frame 0 is correctly rendered
-      applyChoreography(currentProgressRef.current);
-
-      return () => {
-        tl.kill();
-      };
-    },
-    { dependencies: [camera, applyChoreography] }
-  );
-
-  useFrame((_, delta) => {
-    // Irreversible constraint: once dived to city grid, progress can NEVER go below 0.70!
-    if (hasDived) {
-      targetProgressRef.current = Math.max(0.70, targetProgressRef.current);
-    }
-
-    if (isAutoPlayingRef.current) {
-      if (hasDived) {
-        // Subtle surge pulsation between 0.70 and 0.95
-        targetProgressRef.current = 0.70 + (Math.sin(Date.now() * 0.0008) * 0.5 + 0.5) * 0.25;
-      }
-    }
-
-    const diff = targetProgressRef.current - currentProgressRef.current;
-    if (Math.abs(diff) > 0.0001) {
-      currentProgressRef.current += diff * 0.25;
-      applyChoreography(currentProgressRef.current);
-    }
-  });
+  }, [routeActive, activeRoute, isLoading, camera, controlsRef]);
 
   return null;
 }
 
 export interface GridSkeletonSceneProps {
-  targetProgressRef: React.MutableRefObject<number>;
-  currentProgressRef: React.MutableRefObject<number>;
-  isAutoPlayingRef: React.MutableRefObject<boolean>;
+  targetProgressRef?: React.MutableRefObject<number>;
+  currentProgressRef?: React.MutableRefObject<number>;
+  isAutoPlayingRef?: React.MutableRefObject<boolean>;
   onTelemetryUpdate?: (progress: number) => void;
   stormIntensity?: number;
   routeActive?: boolean;
@@ -1144,12 +715,10 @@ export interface GridSkeletonSceneProps {
   surgeModelFeed?: Record<string, { isFull: boolean; waterDepth?: number }>;
   hasDived?: boolean;
   onDiveComplete?: () => void;
+  onLoadingStateChange?: (isLoading: boolean) => void;
 }
 
 export const GridSkeletonScene = memo(function GridSkeletonScene({
-  targetProgressRef,
-  currentProgressRef,
-  isAutoPlayingRef,
   onTelemetryUpdate,
   stormIntensity = 75,
   routeActive = false,
@@ -1157,91 +726,49 @@ export const GridSkeletonScene = memo(function GridSkeletonScene({
   className = '',
   externalControlsRef,
   surgeModelFeed,
-  hasDived = false,
   onDiveComplete,
+  onLoadingStateChange,
 }: GridSkeletonSceneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   // 3D Scene Refs
-  const globeGroupRef = useRef<THREE.Group>(null);
-  const globeScaleRef = useRef<THREE.Group>(null);
-  const globeMatRef = useRef<THREE.MeshBasicMaterial>(null);
-
   const boundaryGroupRef = useRef<THREE.Group>(null);
   const boundaryMatRef = useRef<THREE.LineBasicMaterial>(null);
-
   const gridMeshRef = useRef<THREE.InstancedMesh>(null);
   const gridLinesGroupRef = useRef<THREE.Group>(null);
-
   const nodesMeshRef = useRef<THREE.InstancedMesh>(null);
   const nodesGroupRef = useRef<THREE.Group>(null);
-
   const routeGroupRef = useRef<THREE.Group>(null);
-  const terrainGroupRef = useRef<THREE.Group>(null);
   const internalControlsRef = useRef<OrbitControlsImpl>(null);
   const controlsRef = (externalControlsRef || internalControlsRef) as React.RefObject<OrbitControlsImpl>;
 
   // Real Datasets State
-  const [earthData, setEarthData] = useState<EarthContinentsData | null>(null);
   const [boundaryData, setBoundaryData] = useState<HydropBoundaryData | null>(null);
   const [gridNodes, setGridNodes] = useState<HydropDrainageNode[] | null>(null);
   const [gridPipes, setGridPipes] = useState<number[][] | null>(null);
   const [buildings, setBuildings] = useState<BuildingData[] | null>(null);
   const [elevationData, setElevationData] = useState<ElevationData | null>(null);
-  const [isInView, setIsInView] = useState<boolean>(false);
-
-  // Trigger camera dive only after the 3D frame has scrolled into user's view
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setIsInView(true);
-        }
-      },
-      { threshold: 0.15 }
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
     let isMounted = true;
 
-    // 1. Earth Continents & Mumbai Vector on Sphere
-    fetch('/data/earth_continents.json')
-      .then((r) => r.json())
-      .then((data) => {
-        if (isMounted) setEarthData(data);
-      })
-      .catch(console.error);
-
-    // 2. Hydrop-Data Official Mumbai Boundary & 5km AOI
-    fetch('/data/hydrop_boundary.json')
-      .then((r) => r.json())
-      .then((data) => {
-        if (isMounted) setBoundaryData(data);
-      })
-      .catch(console.error);
-
-    // 3. Hydrop-Data Real Drainage Network (2,398 Nodes & 5,500 Pipes)
-    fetch('/data/hydrop_grid_network.json')
-      .then((r) => r.json())
-      .then((data) => {
-        if (isMounted) {
-          setGridNodes(data.nodes);
-          setGridPipes(data.pipes);
+    // Concurrently fetch all 4 core topological datasets
+    Promise.all([
+      fetch('/data/hydrop_boundary.json').then((r) => r.json()),
+      fetch('/data/hydrop_grid_network.json').then((r) => r.json()),
+      fetch('/data/mumbai_buildings.json').then((r) => r.json()),
+      fetch('/data/mumbai_elevation.json').then((r) => r.json()),
+    ])
+      .then(([boundary, grid, blds, elev]) => {
+        if (!isMounted) return;
+        setBoundaryData(boundary);
+        if (grid) {
+          setGridNodes(grid.nodes || null);
+          setGridPipes(grid.pipes || null);
         }
-      })
-      .catch(console.error);
-
-    // 4. Mumbai Buildings (10,113 structures covering island toe-to-toe)
-    fetch('/data/mumbai_buildings.json')
-      .then((r) => r.json())
-      .then((data: number[][]) => {
-        if (isMounted && Array.isArray(data)) {
-          const blds: BuildingData[] = data.map((item) => ({
+        if (Array.isArray(blds)) {
+          const formattedBlds: BuildingData[] = blds.map((item: number[]) => ({
             x: item[0],
             z: item[1],
             ground_y: item[2],
@@ -1249,23 +776,28 @@ export const GridSkeletonScene = memo(function GridSkeletonScene({
             width: item[4],
             depth: item[5],
           }));
-          setBuildings(blds);
+          setBuildings(formattedBlds);
+        }
+        setElevationData(elev);
+        setIsLoading(false);
+        if (onLoadingStateChange) {
+          onLoadingStateChange(false);
         }
       })
-      .catch(console.error);
-
-    // 5. ISRO CartoDEM Terrain Elevation
-    fetch('/data/mumbai_elevation.json')
-      .then((r) => r.json())
-      .then((data) => {
-        if (isMounted) setElevationData(data);
-      })
-      .catch(console.error);
+      .catch((err) => {
+        console.error('Error loading 3D datasets:', err);
+        if (isMounted) {
+          setIsLoading(false);
+          if (onLoadingStateChange) {
+            onLoadingStateChange(false);
+          }
+        }
+      });
 
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [onLoadingStateChange]);
 
   return (
     <div
@@ -1277,7 +809,7 @@ export const GridSkeletonScene = memo(function GridSkeletonScene({
         className="w-full h-full"
         dpr={[1, 1.5]}
         camera={{
-          position: [0, 35, 125],
+          position: [135, 145, 135],
           fov: 42,
           near: 0.5,
           far: 3500,
@@ -1294,7 +826,7 @@ export const GridSkeletonScene = memo(function GridSkeletonScene({
         <OrbitControls
           ref={controlsRef}
           makeDefault
-          enabled={hasDived}
+          enabled={!isLoading}
           enableZoom={true}
           maxPolarAngle={Math.PI / 2 - 0.02}
           minDistance={20}
@@ -1303,29 +835,14 @@ export const GridSkeletonScene = memo(function GridSkeletonScene({
           dampingFactor={0.05}
         />
 
-        {/* 1. STAGE 1: 3D Rotating Wire-Mesh Earth Globe (Neon Colors & Mumbai Reticle) */}
-        <NeonWireframeGlobe
-          globeGroupRef={globeGroupRef}
-          globeScaleRef={globeScaleRef}
-          globeMatRef={globeMatRef}
-          earthData={earthData}
-          currentProgressRef={currentProgressRef}
-        />
-
-        {/* 2. ISRO CartoDEM Terrain Surface */}
-        <CartoDemTerrainMesh
-          elevationData={elevationData}
-          terrainGroupRef={terrainGroupRef}
-        />
-
-        {/* 3. Official Hydrop-Data Mumbai Boundary Wall */}
+        {/* 1. Official Hydrop-Data Mumbai Boundary Wall */}
         <HydropBoundary
           boundaryData={boundaryData}
           boundaryMatRef={boundaryMatRef}
           boundaryGroupRef={boundaryGroupRef}
         />
 
-        {/* 4. Tactical City Grid in White or Cyan */}
+        {/* 2. Tactical City Grid in White and Cyan */}
         <HydropCityGrid
           buildings={buildings}
           pipes={gridPipes}
@@ -1333,7 +850,7 @@ export const GridSkeletonScene = memo(function GridSkeletonScene({
           gridLinesGroupRef={gridLinesGroupRef}
         />
 
-        {/* 5. Hydrop Drainage Surge Nodes (Yellow -> Red When Full) */}
+        {/* 3. Hydrop Drainage Surge Nodes (Yellow -> Red When Full) */}
         <HydropDrainageNodes
           nodes={gridNodes}
           stormIntensity={stormIntensity}
@@ -1342,29 +859,21 @@ export const GridSkeletonScene = memo(function GridSkeletonScene({
           externalSurgeFeed={surgeModelFeed}
         />
 
-        {/* 6. Safe Route Vector (Glowing Neon Green Line) */}
-        <HolographicRouteVector routeGroupRef={routeGroupRef} hasDived={hasDived} activeRoute={activeRoute} />
-
-        {/* 7. Master Camera Choreographer */}
-        <MasterChoreographer
-          globeGroupRef={globeGroupRef}
-          globeScaleRef={globeScaleRef}
-          globeMatRef={globeMatRef}
-          boundaryGroupRef={boundaryGroupRef}
-          gridLinesGroupRef={gridLinesGroupRef}
-          nodesGroupRef={nodesGroupRef}
-          terrainGroupRef={terrainGroupRef}
+        {/* 4. Safe Route Vector (Glowing Neon Green Line) */}
+        <HolographicRouteVector
           routeGroupRef={routeGroupRef}
+          activeRoute={activeRoute}
+          routeActive={routeActive}
+        />
+
+        {/* 5. Master Camera Controller */}
+        <MasterCameraController
           routeActive={routeActive}
           activeRoute={activeRoute}
           controlsRef={controlsRef}
-          targetProgressRef={targetProgressRef}
-          currentProgressRef={currentProgressRef}
-          isAutoPlayingRef={isAutoPlayingRef}
           onTelemetryUpdate={onTelemetryUpdate}
-          hasDived={hasDived}
           onDiveComplete={onDiveComplete}
-          isInView={isInView}
+          isLoading={isLoading}
         />
       </Canvas>
     </div>
