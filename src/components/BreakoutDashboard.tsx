@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { CornerUpRight, Zap } from 'lucide-react';
+import { CornerUpRight } from 'lucide-react';
 import { WaveGridBackground } from './WaveGridBackground';
 
 gsap.registerPlugin(ScrollTrigger);
@@ -11,14 +11,8 @@ interface BreakoutDashboardProps {
 }
 
 export const BreakoutDashboard: React.FC<BreakoutDashboardProps> = ({ onLaunchSimulation }) => {
-  const [simulatingReroute, setSimulatingReroute] = useState(false);
   const headerRef = useRef<HTMLDivElement>(null);
   const cardsRef = useRef<HTMLDivElement>(null);
-
-  const triggerRerouteSimulation = () => {
-    setSimulatingReroute(true);
-    setTimeout(() => setSimulatingReroute(false), 1200);
-  };
 
   // GSAP scroll-triggered card swipe animations
   useEffect(() => {
@@ -214,24 +208,6 @@ export const BreakoutDashboard: React.FC<BreakoutDashboardProps> = ({ onLaunchSi
                     <span className="text-white font-semibold">8 min (2.4 km)</span>
                   </div>
                 </div>
-
-                <button
-                  onClick={triggerRerouteSimulation}
-                  disabled={simulatingReroute}
-                  className="w-full py-2.5 rounded-xl bg-white text-[#030708] font-mono text-[12px] font-semibold transition-all hover:bg-white/90 flex items-center justify-center gap-2 pointer-events-auto cursor-pointer"
-                >
-                  {simulatingReroute ? (
-                    <>
-                      <Zap className="w-3.5 h-3.5 animate-spin" />
-                      <span>RECALCULATING...</span>
-                    </>
-                  ) : (
-                    <>
-                      <CornerUpRight className="w-3.5 h-3.5" />
-                      <span>SIMULATE RE-ROUTE</span>
-                    </>
-                  )}
-                </button>
               </div>
             </div>
           </div>

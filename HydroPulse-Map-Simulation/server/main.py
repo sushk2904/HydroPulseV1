@@ -7,6 +7,11 @@ import math
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
+# Ensure project root is in sys.path for internal imports
+BASE_DIR = Path(__file__).resolve().parent.parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
 import torch
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,9 +28,6 @@ from server.auth import (
 )
 
 from server.model import load_trained_model, STGAT_GRU
-
-# Paths
-BASE_DIR = Path(__file__).resolve().parent.parent
 MODEL_PATH = BASE_DIR / "Hydrop-data" / "models" / "best_mumbai_stgnn.pt"
 STORM_PATH = BASE_DIR / "Hydrop-data" / "demos" / "demo_storm.pt"
 DRAINAGE_INP_PATH = BASE_DIR / "public" / "data" / "mumbai_synthetic.inp"
