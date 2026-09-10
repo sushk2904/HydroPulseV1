@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 export interface AuthUser {
   id: number;
@@ -175,15 +176,17 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     }
   };
 
-  return (
+  if (!isOpen || !user || typeof document === 'undefined') return null;
+
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
+      className="fixed inset-0 z-[99999] flex items-center justify-center p-4 sm:p-6 bg-black/85 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
       <div
-        className="relative w-full max-w-2xl rounded-2xl bg-[#090d13] border border-cyan-500/30 text-white shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
+        className="relative w-full max-w-2xl rounded-2xl bg-[#090d13] border border-cyan-500/30 text-white shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 my-auto"
         style={{
           boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.95), 0 0 40px rgba(0, 217, 255, 0.15)',
         }}
@@ -468,6 +471,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

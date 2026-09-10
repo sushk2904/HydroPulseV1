@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { smoothScrollTo } from '../lib/utils';
 import { ProfileModal, AuthUser } from './ProfileModal';
 
@@ -221,15 +222,15 @@ export const Navbar: React.FC<NavbarProps> = ({ onLaunchSimulation }) => {
       />
 
       {/* Authentication Modal */}
-      {showAuthModal && (
+      {showAuthModal && typeof document !== 'undefined' && createPortal(
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+          className="fixed inset-0 z-[99999] flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto"
           onClick={(e) => {
             if (e.target === e.currentTarget) handleCloseModal();
           }}
         >
           <div
-            className="relative w-full max-w-md rounded-2xl p-6 sm:p-8 bg-[#0a0e14] border border-cyan-400/40 text-white animate-in fade-in zoom-in-95 duration-200"
+            className="relative w-full max-w-md rounded-2xl p-6 sm:p-8 bg-[#0a0e14] border border-cyan-400/40 text-white animate-in fade-in zoom-in-95 duration-200 my-auto"
             style={{
               boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 0 40px rgba(0, 217, 255, 0.25)',
             }}
@@ -374,7 +375,8 @@ export const Navbar: React.FC<NavbarProps> = ({ onLaunchSimulation }) => {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

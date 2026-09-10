@@ -70,7 +70,8 @@ export const TacticalNavbar = memo(function TacticalNavbar() {
   };
 
   return (
-    <header
+    <>
+      <header
       className="fixed top-0 left-0 right-0 z-50 transition-all duration-300"
       style={{
         backgroundColor: 'rgba(6, 10, 16, 0.45)',
@@ -258,15 +259,16 @@ export const TacticalNavbar = memo(function TacticalNavbar() {
           )}
         </div>
       </div>
-
-      {/* Operator Profile Modal */}
-      <ProfileModal
-        isOpen={showProfileModal}
-        onClose={() => setShowProfileModal(false)}
-        user={currentUser}
-        onUpdateUser={(updated) => setCurrentUser(updated)}
-        onLogout={handleLogout}
-      />
     </header>
-  );
+
+    {/* Operator Profile Modal */}
+    <ProfileModal
+      isOpen={showProfileModal}
+      onClose={() => setShowProfileModal(false)}
+      user={currentUser}
+      onUpdateUser={(updated) => setCurrentUser(updated)}
+      onLogout={handleLogout}
+    />
+  </>
+);
 });
